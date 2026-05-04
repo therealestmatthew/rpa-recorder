@@ -1,25 +1,168 @@
 [project]
-name = "rpa"
+name = "rpa-recorder"
 version = "0.1.0"
-description = "Add your description here"
+description = "Browser-based RPA tool with semantic recording, classification, and resilient replay."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = [
-    "anthropic>=0.98.1",
-    "fastapi>=0.136.1",
-    "openpyxl>=3.1.5",
-    "pandas>=3.0.2",
-    "playwright>=1.59.0",
-    "pydantic>=2.13.3",
-    "sqlalchemy>=2.0.49",
-    "typer>=0.25.1",
+license = "MIT"
+authors = [
+    { name = "Matthew Mulé", email = "matthew.j.mule@outlook.com" },
 ]
+keywords = ["rpa", "automation", "playwright", "browser", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "playwright>=1.49",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "typer>=0.13",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.20",
+    "anthropic>=0.39",
+    "structlog>=24.4",
+    "rich>=13.9",
+]
+
+[project.optional-dependencies]
+postgres = ["asyncpg>=0.30"]
+
+[project.scripts]
+rpa = "rpa_recorder.cli:app"
 
 [dependency-groups]
 dev = [
-    "mypy>=1.20.2",
-    "pytest>=9.0.3",
-    "pytest-asyncio>=1.3.0",
-    "pytest-playwright>=0.7.2",
-    "ruff>=0.15.12",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "pytest-playwright>=0.6",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-setuptools",
+    "pre-commit>=4.0",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rpa_recorder"]
+
+
+# ---------- Ruff ----------
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "C4", "UP", "N", "SIM", "RUF",
+    "ASYNC", "S", "PTH", "TCH", "PL", "RET", "ARG", "ERA",
+]
+ignore = [
+    "E501",     # line length (formatter handles it)
+    "PLR0913",  # too many arguments
+    "S101",     # asserts are fine in tests
+    "PLR2004",  # magic values
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S", "ARG", "PLR"]
+"src/rpa_recorder/cli.py" = ["B008"]  # typer uses B008 by design
+
+[tool.ruff.lint.isort]
+known-first-party = ["rpa_recorder"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+
+# ---------- mypy ----------
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+warn_no_return = true
+pretty = true
+show_error_codes = true
+show_column_numbers = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["playwright.*"]
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+
+# ---------- pytest ----------
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=rpa_recorder",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests requiring a real browser",
+    "llm: marks tests that call the Anthropic API",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:playwright.*",
+]
+
+
+# ---------- coverage ----------
+
+[tool.coverage.run]
+branch = true
+source = ["src/rpa_recorder"]
+omit = ["*/tests/*", "*/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
+show_missing = true
+skip_covered = false
+
+
+# ---------- uv ----------
+
+[tool.uv]
+default-groups = ["dev"]

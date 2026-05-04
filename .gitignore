@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.local
+dist/
+build/
+*.egg-info/
+
+# tooling
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# project artifacts
+recordings/
+screenshots/
+traces/
+*.har
+*.zip
+*.db
+
+# local agent / IDE workspace
+.claude/
+CLAUDE.md
