@@ -81,6 +81,11 @@ ignore = [
 "tests/**/*.py" = ["S", "ARG", "PLR"]
 "src/rpa_recorder/cli.py" = ["B008"]  # typer uses B008 by design
 
+[tool.ruff.lint.flake8-type-checking]
+# Pydantic resolves model annotations at runtime; keep BaseModel imports
+# eagerly available rather than gated under TYPE_CHECKING.
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["rpa_recorder"]
 
