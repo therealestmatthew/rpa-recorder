@@ -51,6 +51,28 @@ M5 and M6 are already shipped, so the originally proposed "M5.5 interleave" can'
 | M13 | Adds a `redis:7-alpine` services block in CI. New marker `worker` joins `llm` / `integration` for tests that need Redis up. |
 | M14 | README adds a "Medallion data layout" section; `docs/architecture.md` covers the full bronze→silver→gold + worker fanout diagram. |
 
+## Concurrency conventions
+
+These rules apply across every milestone. The medallion + worker plan codifies them; M6.5 and M11.5 own implementation details. When a milestone introduces a new concurrency primitive (queue, semaphore, lock, fan-out), it must update this table and call out the rule in its own pitfalls section.
+
+| Convention | Rule | Owner |
+|---|---|---|
+| Async everywhere | No blocking I/O on the event loop. Sync libraries (DuckDB, pyarrow heavy ops) wrap in `asyncio.to_thread`. | All |
+| Engine pooling | One `AsyncEngine` per process, shared across coroutines via the engine's pool. Sessions are per-operation (created via `get_session()` context manager) and never reused. | M5 |
+| Browser per replay | Each `replay_run` invocation creates and tears down its own `BrowserSession`. Browser state is not concurrency-safe. | M3, M11.5 |
+| Bounded queues | Producer-consumer between high-rate event sources and durable writers (e.g., Recorder → bronze). Bounded queues with backpressure (drops logged, never silently lost). | M6.5 |
+| Structured concurrency | `asyncio.TaskGroup` for fan-out so one task's failure cleanly cancels siblings. Catch `ExceptionGroup` at the boundary. | M9, M11.5 |
+| Semaphores for caps | Cap parallel calls to expensive resources (LLM API, browser launches) with `asyncio.Semaphore`. Per-instance, not module-global (event-loop-bound). | M9, M11.5 |
+| Distributed locks | Redis `SET NX EX` to ensure only one worker runs `promote_silver_to_gold` at a time. | M11.5 |
+| Job retry policy | Idempotent jobs (silver/gold promotion, compaction, prune): `max_tries=3`. Non-idempotent jobs (`replay_run`): `max_tries=1`. | M11.5 |
+| Queue separation | Browser-heavy jobs (`replay_queue`, `max_jobs=2`) and IO-bound jobs (`medallion_queue`, `max_jobs=10`) run on separate ARQ queues. | M11.5 |
+| Graceful shutdown | Workers drain in-flight jobs on SIGTERM (default 60 s `shutdown_timeout`). Recorder drains its bronze queue on `stop()`. | M6.5, M11.5 |
+| Backpressure at API edge | FastAPI rejects new replays with HTTP 429 when `pool.queue_size() > Config.max_queue_depth`. | M12 |
+| SQLite WAL mode | `PRAGMA journal_mode=WAL`, `PRAGMA busy_timeout=5000` enabled in `init_db()`. Above ~2 concurrent writers, recommend Postgres. | M5, M11.5 |
+| Per-job logging | `structlog.contextvars.bind_contextvars(job_id=..., queue=...)` at each job entry for filterable logs. | M11.5 |
+| LLM concurrency cap | Per-`LLMClassifier` `asyncio.Semaphore(Config.llm_max_concurrency)` (default 5). Total across workers = `worker_count × llm_max_concurrency`. | M9 |
+| Disable SDK retries | Anthropic SDK `max_retries=0` so `RetryPolicy` is the sole retry layer. | M9 |
+
 ## Reading order for a contributor coming in cold
 
 1. [README.md](../README.md) — elevator pitch (populated in M14).
