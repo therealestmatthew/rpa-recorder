@@ -30,6 +30,7 @@ dependencies = [
     "anthropic>=0.39",
     "structlog>=24.4",
     "rich>=13.9",
+    "aiofiles>=24",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +49,7 @@ dev = [
     "mypy>=1.13",
     "types-setuptools",
     "pre-commit>=4.0",
+    "types-aiofiles>=25.1.0.20260409",
 ]
 
 [build-system]
