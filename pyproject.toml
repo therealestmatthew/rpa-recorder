@@ -83,7 +83,7 @@ ignore = [
 # Tests freely use small sync I/O for assertions; ASYNC240 (no Path methods in
 # async fns) is too strict for tiny .exists() checks.
 "tests/**/*.py" = ["S", "ARG", "PLR", "ASYNC240"]
-"src/rpa_recorder/cli.py" = ["B008"]  # typer uses B008 by design
+"src/rpa_recorder/cli/**/*.py" = ["B008"]  # typer uses B008 by design
 
 [tool.ruff.lint.flake8-type-checking]
 # Pydantic, pydantic-settings, and SQLAlchemy ORM all introspect class
