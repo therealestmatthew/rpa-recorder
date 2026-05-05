@@ -20,6 +20,16 @@ class Config(BaseSettings):
     dom_dir: Path = Path("dom")
     storage_state_dir: Path = Path("storage_state")
 
+    # Bronze layer (M6.5+).
+    bronze_root: Path = Path("data/bronze")
+    bronze_queue_size: int = 1000
+    bronze_retention_jsonl_days: int = 30
+    bronze_retention_parquet_days: int = 365
+    bronze_retention_har_days: int = 90
+    bronze_retention_trace_days: int = 90
+    bronze_retention_failure_days: int = 30
+    bronze_retention_llm_days: int = 365
+
     default_browser: Literal["chromium"] = "chromium"
     default_headless: bool = False
 

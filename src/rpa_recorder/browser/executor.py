@@ -4,9 +4,15 @@ Each `RecordedAction` is dispatched against a Playwright locator resolved by
 the spec's strategy order: `test_id` → `role + accessible_name` →
 `text_content` → `css` → `xpath`. Each candidate must match exactly one
 element to win; otherwise the executor falls through. On failure we capture
-a screenshot, the rendered DOM, and Playwright's accessibility tree to disk
-under `screenshots_dir/<run_id>/` and `dom_dir/<run_id>/`, then dispatch to
-`_attempt_recovery` (stubbed in M6, populated by the recovery engine in M10).
+a screenshot, the rendered DOM, and Playwright's accessibility tree.
+
+When a `BronzeWriter` is provided, those failure artifacts route through
+bronze (`runs/<run_id>/attempts/<attempt_id>/{screenshot.png,dom.html,a11y.json}`)
+and the resulting store-relative paths populate `ExecutionAttempt`.
+
+When `bronze` is omitted, the executor falls back to direct writes under the
+caller-supplied `screenshots_dir` / `dom_dir`. This legacy path keeps the
+M6 test suite passing unchanged; new code paths should pass `bronze`.
 """
 
 import json
@@ -44,6 +50,8 @@ from rpa_recorder.models import (
 if TYPE_CHECKING:
     from playwright.async_api import Locator, Page
 
+    from rpa_recorder.medallion import BronzeWriter
+
 
 class SelectorResolutionError(Exception):
     """Raised when no `ElementSelector` strategy resolves to exactly one element."""
@@ -70,15 +78,22 @@ class Executor:
         page: Page,
         recording: Recording,
         *,
-        screenshots_dir: Path,
-        dom_dir: Path,
+        screenshots_dir: Path | None = None,
+        dom_dir: Path | None = None,
+        bronze: BronzeWriter | None = None,
         parameter_values: dict[str, str] | None = None,
         run_id: UUID | None = None,
     ) -> None:
+        if bronze is None and (screenshots_dir is None or dom_dir is None):
+            raise ValueError(
+                "Executor requires either a `bronze` writer or both "
+                "`screenshots_dir` and `dom_dir`",
+            )
         self._page = page
         self._recording = recording
-        self._screenshots_dir = Path(screenshots_dir)
-        self._dom_dir = Path(dom_dir)
+        self._screenshots_dir = Path(screenshots_dir) if screenshots_dir is not None else None
+        self._dom_dir = Path(dom_dir) if dom_dir is not None else None
+        self._bronze = bronze
         self._parameter_values = dict(parameter_values or {})
         self._run_id = run_id or uuid4()
         self._console_log: list[str] = []
@@ -166,9 +181,15 @@ class Executor:
         console_mark: int,
         errors_mark: int,
     ) -> ActionExecution:
+        attempt_id = uuid4()
         ended = datetime.now(UTC)
-        paths = await self._capture_failure(action, attempt_number=1)
+        paths = await self._capture_failure(
+            action,
+            attempt_id=attempt_id,
+            attempt_number=1,
+        )
         attempt = ExecutionAttempt(
+            id=attempt_id,
             attempt_number=1,
             started_at=attempt_started,
             ended_at=ended,
@@ -305,8 +326,54 @@ class Executor:
     # ----- failure capture --------------------------------------------------
 
     async def _capture_failure(
+        self,
+        action: RecordedAction,
+        *,
+        attempt_id: UUID,
+        attempt_number: int,
+    ) -> dict[str, str | None]:
+        if self._bronze is not None:
+            return await self._capture_failure_bronze(attempt_id)
+        return await self._capture_failure_legacy(action, attempt_number=attempt_number)
+
+    async def _capture_failure_bronze(self, attempt_id: UUID) -> dict[str, str | None]:
+        bronze = self._bronze
+        if bronze is None:  # pragma: no cover — guarded by caller
+            return {"screenshot": None, "dom": None, "a11y": None}
+
+        screenshot_bytes: bytes | None = None
+        dom_bytes: bytes | None = None
+        a11y_bytes: bytes | None = None
+
+        with suppress(PlaywrightError, OSError):
+            screenshot_bytes = await self._page.screenshot()
+        with suppress(PlaywrightError, OSError):
+            html = await self._page.content()
+            dom_bytes = html.encode("utf-8")
+        with suppress(PlaywrightError, OSError, AttributeError):
+            tree = await self._page.accessibility.snapshot()  # type: ignore[attr-defined]
+            a11y_bytes = json.dumps(tree, default=str, indent=2).encode("utf-8")
+
+        out: dict[str, str | None] = {"screenshot": None, "dom": None, "a11y": None}
+        if screenshot_bytes is not None:
+            out["screenshot"] = await bronze.write_attempt_artifact(
+                self._run_id, attempt_id, "screenshot", screenshot_bytes
+            )
+        if dom_bytes is not None:
+            out["dom"] = await bronze.write_attempt_artifact(
+                self._run_id, attempt_id, "dom", dom_bytes
+            )
+        if a11y_bytes is not None:
+            out["a11y"] = await bronze.write_attempt_artifact(
+                self._run_id, attempt_id, "a11y", a11y_bytes
+            )
+        return out
+
+    async def _capture_failure_legacy(
         self, action: RecordedAction, *, attempt_number: int
     ) -> dict[str, str | None]:
+        if self._screenshots_dir is None or self._dom_dir is None:  # pragma: no cover
+            return {"screenshot": None, "dom": None, "a11y": None}
         run_dir_screens = self._screenshots_dir / str(self._run_id)
         run_dir_dom = self._dom_dir / str(self._run_id)
         run_dir_screens.mkdir(parents=True, exist_ok=True)

@@ -35,8 +35,14 @@ class FailureMode(StrEnum):
 
 
 class ExecutionAttempt(BaseModel):
-    """One attempt at executing an action; multiple per `ActionExecution` if recovery runs."""
+    """One attempt at executing an action; multiple per `ActionExecution` if recovery runs.
 
+    The `id` is generated up-front (rather than at DB save time) so bronze
+    artifacts captured during the attempt — screenshot, DOM, a11y — can FK to
+    the same id that lands in `execution_attempts.id`.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
     attempt_number: int
     started_at: datetime
     ended_at: datetime | None = None

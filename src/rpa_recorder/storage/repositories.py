@@ -35,6 +35,7 @@ from rpa_recorder.models import (
 )
 from rpa_recorder.storage.db import (
     ActionExecutionRow,
+    BronzeArtifactRow,
     ExecutionAttemptRow,
     NetworkEventRow,
     RecordedActionRow,
@@ -333,6 +334,7 @@ class RunResultRepository:
     @staticmethod
     def _attempt_to_row(attempt: ExecutionAttempt) -> ExecutionAttemptRow:
         return ExecutionAttemptRow(
+            id=str(attempt.id),
             attempt_number=attempt.attempt_number,
             started_at=attempt.started_at,
             ended_at=attempt.ended_at,
@@ -373,6 +375,7 @@ class RunResultRepository:
     @staticmethod
     def _row_to_attempt(row: ExecutionAttemptRow) -> ExecutionAttempt:
         return ExecutionAttempt(
+            id=UUID(row.id),
             attempt_number=row.attempt_number,
             started_at=row.started_at,
             ended_at=row.ended_at,
@@ -386,3 +389,77 @@ class RunResultRepository:
             console_log=list(row.console_log or []),
             js_errors=list(row.js_errors or []),
         )
+
+
+class BronzeArtifactRepository:
+    """CRUD over `BronzeArtifactRow` pointer rows.
+
+    `BronzeWriter` calls into this to register each artifact it persists. The
+    repository methods do not commit on their own — `get_session()` owns
+    transaction boundaries.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(
+        self,
+        *,
+        artifact_id: str,
+        kind: str,
+        path: str,
+        sha256: str,
+        size_bytes: int,
+        recording_id: str | None = None,
+        run_id: str | None = None,
+        attempt_id: str | None = None,
+    ) -> None:
+        """Insert a new pointer row. `sha256` and `size_bytes` may be filled in later."""
+        row = BronzeArtifactRow(
+            id=artifact_id,
+            kind=kind,
+            path=path,
+            sha256=sha256,
+            size_bytes=size_bytes,
+            recording_id=recording_id,
+            run_id=run_id,
+            attempt_id=attempt_id,
+        )
+        self._session.add(row)
+        await self._session.flush()
+
+    async def update_size_and_sha(
+        self,
+        *,
+        path: str,
+        sha256: str,
+        size_bytes: int,
+    ) -> None:
+        """Backfill `sha256` + `size_bytes` for an artifact registered earlier."""
+        stmt = select(BronzeArtifactRow).where(BronzeArtifactRow.path == path)
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return
+        row.sha256 = sha256
+        row.size_bytes = size_bytes
+        await self._session.flush()
+
+    async def list_for_recording(self, recording_id: UUID) -> list[BronzeArtifactRow]:
+        """Return every pointer row attached to a recording, oldest first."""
+        stmt = (
+            select(BronzeArtifactRow)
+            .where(BronzeArtifactRow.recording_id == str(recording_id))
+            .order_by(BronzeArtifactRow.created_at)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_for_attempt(self, attempt_id: UUID) -> list[BronzeArtifactRow]:
+        """Return every pointer row attached to one execution attempt."""
+        stmt = (
+            select(BronzeArtifactRow)
+            .where(BronzeArtifactRow.attempt_id == str(attempt_id))
+            .order_by(BronzeArtifactRow.created_at)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())

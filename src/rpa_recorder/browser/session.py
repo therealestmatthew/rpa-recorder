@@ -1,6 +1,7 @@
 """`BrowserSession` async context manager wrapping Playwright Chromium."""
 
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 
 from playwright.async_api import (
@@ -13,6 +14,9 @@ from playwright.async_api import (
 
 if TYPE_CHECKING:
     from types import TracebackType
+    from uuid import UUID
+
+    from rpa_recorder.medallion import BronzeWriter
 
 
 class BrowserSession:
@@ -22,6 +26,12 @@ class BrowserSession:
     Page. When `trace_path` is set, starts a trace with screenshots/snapshots/
     sources and writes the zip on exit. When `har_path` is set, the
     BrowserContext records a HAR file (written automatically on context close).
+
+    When both `bronze` and `recording_id` are provided, on exit the session
+    reads the har/trace bytes back from disk and forwards them to
+    `BronzeWriter.finalize_recording(...)` so the artifacts end up in bronze
+    alongside the local files. Local writes still happen — bronze is a copy
+    (until a future milestone retires the local traces dir).
     """
 
     def __init__(
@@ -34,6 +44,8 @@ class BrowserSession:
         timezone_id: str = "UTC",
         trace_path: str | None = None,
         har_path: str | None = None,
+        bronze: BronzeWriter | None = None,
+        recording_id: UUID | None = None,
     ) -> None:
         self._headless = headless
         self._storage_state = storage_state
@@ -42,6 +54,8 @@ class BrowserSession:
         self._timezone_id = timezone_id
         self._trace_path = trace_path
         self._har_path = har_path
+        self._bronze = bronze
+        self._recording_id = recording_id
         self._stack: AsyncExitStack | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
@@ -99,9 +113,21 @@ class BrowserSession:
     ) -> None:
         if self._stack is not None:
             await self._stack.__aexit__(exc_type, exc_val, exc_tb)
+        # After teardown, har/trace files exist on disk. If bronze was
+        # provided, copy them up.
+        await self._finalize_bronze()
         self._stack = None
         self._context = None
         self._page = None
+
+    async def _finalize_bronze(self) -> None:
+        bronze = self._bronze
+        recording_id = self._recording_id
+        if bronze is None or recording_id is None:
+            return
+        har_bytes = _read_optional(self._har_path)
+        trace_bytes = _read_optional(self._trace_path)
+        await bronze.finalize_recording(recording_id, har_bytes, trace_bytes)
 
     @property
     def page(self) -> Page:
@@ -114,3 +140,15 @@ class BrowserSession:
         if self._context is None:
             raise RuntimeError("BrowserSession is not entered")
         return self._context
+
+
+def _read_optional(path: str | None) -> bytes | None:
+    if path is None:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        return p.read_bytes()
+    except OSError:
+        return None

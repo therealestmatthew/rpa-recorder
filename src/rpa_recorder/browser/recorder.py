@@ -1,17 +1,27 @@
 """Recorder that injects the page-side script and emits `RecordedAction` rows.
 
 The Recorder attaches to a Playwright `Page`, exposes `__rpa_capture` to the
-page, and injects `assets/recorder_inject.js` as an init script so it runs in
-every frame on every navigation. The page-side script forwards click / input /
-change / keydown envelopes; this module normalizes them into `RecordedAction`
-rows. Page-level `request`, `response`, and `framenavigated` events feed the
+page, and bundles `page_scripts/{shared/text_utils, shared/selectors,
+recorder/inject}` as an init script so it runs in every frame on every
+navigation. The page-side scripts forward click / input / change / keydown
+envelopes; this module normalizes them into `RecordedAction` rows.
+Page-level `request`, `response`, and `framenavigated` events feed the
 network log and produce `NAVIGATE` actions for SPA-style navigations.
+
+When a `BronzeWriter` is provided, raw envelopes are also pushed onto a
+bounded `asyncio.Queue` and a background drain task batches them into the
+bronze JSONL. The capture handler never awaits the bronze write — it does
+a non-blocking `put_nowait`, dropping (with a structlog warning) on
+`QueueFull` so a stalled disk cannot back up the event loop.
 """
 
+import asyncio
 from contextlib import suppress
 from datetime import UTC, datetime
-from importlib.resources import files
 from typing import TYPE_CHECKING, Any
+from uuid import UUID, uuid4
+
+import structlog
 
 # Runtime imports: Playwright introspects listener-handler signatures via
 # `inspect.signature()`, which forces annotation evaluation. Frame / Page /
@@ -32,14 +42,22 @@ from rpa_recorder.models import (
     Recording,
     SelectPayload,
 )
+from rpa_recorder.page_scripts import bundle
 
 if TYPE_CHECKING:
+    from rpa_recorder.medallion import BronzeWriter
     from rpa_recorder.models.actions import ActionPayload
 
+_log = structlog.get_logger(__name__)
 
-def _load_inject_script() -> str:
-    """Read the page-side recorder script from the bundled assets package."""
-    return files("rpa_recorder.assets").joinpath("recorder_inject.js").read_text(encoding="utf-8")
+_BRONZE_BATCH_SIZE: int = 10
+_BRONZE_BATCH_WAIT_SECS: float = 0.1
+_BRONZE_DRAIN_TIMEOUT_SECS: float = 5.0
+
+
+def _build_inject_bundle() -> str:
+    """Bundle the recorder-side init script (shared utilities first, then inject)."""
+    return bundle("shared/text_utils", "shared/selectors", "recorder/inject")
 
 
 class Recorder:
@@ -47,19 +65,24 @@ class Recorder:
 
     Lifecycle:
         - `await recorder.start()` exposes `__rpa_capture` to the page,
-          installs the init script for future navigations, evaluates it on
+          installs the init bundle for future navigations, evaluates it on
           the current document, and binds page-level network/navigation
-          listeners.
+          listeners. If `bronze` was provided, also creates the bounded
+          envelope queue and starts the drain task.
         - The page emits envelopes through `__rpa_capture`; this class
           normalizes each into a `RecordedAction` with an incrementing
-          `sequence` and the page's current `url`.
-        - `await recorder.stop()` detaches Python-side listeners and makes
-          subsequent envelopes no-ops.
+          `sequence` and the page's current `url`. Raw envelopes also land
+          in the bronze queue (non-blocking).
+        - `await recorder.stop()` detaches Python-side listeners, flushes
+          the bronze queue with a 5 s timeout, and makes subsequent
+          envelopes no-ops.
         - `recorder.get_recording()` returns the assembled `Recording`.
 
-    Concurrency: handlers do not `await` between mutating `_sequence` and
-    appending to `_actions`, so under asyncio's single-threaded model
-    captures stay ordered without an explicit lock.
+    Concurrency: the capture handler does not `await` between mutating
+    `_sequence` and appending to `_actions`, so under asyncio's
+    single-threaded model captures stay ordered without an explicit lock.
+    The bronze enqueue (`put_nowait`) is non-awaiting and preserves that
+    invariant.
     """
 
     def __init__(
@@ -68,6 +91,9 @@ class Recorder:
         *,
         name: str = "recording",
         starting_url: str | None = None,
+        bronze: BronzeWriter | None = None,
+        recording_id: UUID | None = None,
+        bronze_queue_size: int = 1000,
     ) -> None:
         self._page = page
         self._name = name
@@ -80,12 +106,24 @@ class Recorder:
         self._stopped = False
         self._last_main_frame_url: str | None = None
 
+        # Bronze plumbing — all None when bronze writes are disabled.
+        self._bronze = bronze
+        self._recording_id = recording_id or uuid4()
+        self._bronze_queue_size = bronze_queue_size
+        self._bronze_queue: asyncio.Queue[dict[str, Any] | None] | None = None
+        self._bronze_drain_task: asyncio.Task[None] | None = None
+
+    @property
+    def recording_id(self) -> UUID:
+        """The UUID assigned to the recording produced by this recorder."""
+        return self._recording_id
+
     async def start(self) -> None:
         """Expose the capture binding, inject the script, bind page listeners."""
         if self._started:
             raise RuntimeError("Recorder is already started")
         await self._page.expose_function("__rpa_capture", self._on_capture)
-        script = _load_inject_script()
+        script = _build_inject_bundle()
         await self._page.add_init_script(script=script)
         # add_init_script only runs on future navigations; evaluate once for
         # whatever document is currently loaded so we don't miss the first page.
@@ -96,6 +134,10 @@ class Recorder:
         self._page.on("framenavigated", self._on_framenavigated)
         self._started_at = datetime.now(UTC)
         self._started = True
+
+        if self._bronze is not None:
+            self._bronze_queue = asyncio.Queue(maxsize=self._bronze_queue_size)
+            self._bronze_drain_task = asyncio.create_task(self._drain_bronze())
 
     async def stop(self) -> None:
         """Detach page listeners and freeze the recording."""
@@ -109,6 +151,19 @@ class Recorder:
         with suppress(KeyError, ValueError):
             self._page.remove_listener("framenavigated", self._on_framenavigated)
 
+        if self._bronze_queue is not None and self._bronze_drain_task is not None:
+            with suppress(asyncio.QueueFull):
+                self._bronze_queue.put_nowait(None)
+            try:
+                await asyncio.wait_for(
+                    self._bronze_drain_task,
+                    timeout=_BRONZE_DRAIN_TIMEOUT_SECS,
+                )
+            except TimeoutError:
+                self._bronze_drain_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._bronze_drain_task
+
     def get_recording(self) -> Recording:
         """Return the captured `Recording`. Requires `start()` to have run."""
         if self._started_at is None:
@@ -120,6 +175,7 @@ class Recorder:
         else:
             starting = self._page.url
         return Recording(
+            id=self._recording_id,
             name=self._name,
             created_at=self._started_at,
             starting_url=starting,
@@ -142,6 +198,16 @@ class Recorder:
     async def _on_capture(self, raw: dict[str, Any]) -> None:
         if self._stopped:
             return
+        # Bronze enqueue is non-awaiting so capture stays off the I/O hot path.
+        if self._bronze_queue is not None:
+            try:
+                self._bronze_queue.put_nowait(raw)
+            except asyncio.QueueFull:
+                _log.warning(
+                    "bronze_queue_full_dropped",
+                    event_type=raw.get("event_type"),
+                    frame_url=raw.get("frame_url"),
+                )
         try:
             action = self._build_action(raw)
         except ValidationError, ValueError, TypeError:
@@ -216,6 +282,68 @@ class Recorder:
         if isinstance(value, int | float) and not isinstance(value, bool):
             return datetime.fromtimestamp(float(value) / 1000.0, tz=UTC)
         return datetime.now(UTC)
+
+    # ----- bronze drain -----------------------------------------------------
+
+    async def _drain_bronze(self) -> None:
+        """Read envelopes off the bronze queue and batch-write them to bronze.
+
+        Reads in batches of up to `_BRONZE_BATCH_SIZE` events with up to
+        `_BRONZE_BATCH_WAIT_SECS` between successive items. A `None`
+        sentinel terminates the loop. On `CancelledError` (overrun
+        shutdown) the remaining queue contents are flushed best-effort.
+
+        Bronze write failures are logged and swallowed — the drain task
+        must not exit on a transient I/O hiccup, since the queue would
+        then back up until `Recorder.stop()` returns.
+        """
+        queue = self._bronze_queue
+        bronze = self._bronze
+        recording_id = self._recording_id
+        if queue is None or bronze is None:
+            return
+
+        async def flush(batch: list[dict[str, Any]]) -> None:
+            if not batch:
+                return
+            try:
+                await bronze.append_events(recording_id, batch)
+            except Exception as exc:
+                _log.error("bronze_drain_flush_failed", error=str(exc))
+
+        try:
+            while True:
+                first = await queue.get()
+                if first is None:
+                    return
+                batch: list[dict[str, Any]] = [first]
+                deadline = asyncio.get_event_loop().time() + _BRONZE_BATCH_WAIT_SECS
+                while len(batch) < _BRONZE_BATCH_SIZE:
+                    remaining = deadline - asyncio.get_event_loop().time()
+                    if remaining <= 0:
+                        break
+                    try:
+                        item = await asyncio.wait_for(queue.get(), timeout=remaining)
+                    except TimeoutError:
+                        break
+                    if item is None:
+                        await flush(batch)
+                        return
+                    batch.append(item)
+                await flush(batch)
+        except asyncio.CancelledError:
+            leftover: list[dict[str, Any]] = []
+            while not queue.empty():
+                try:
+                    item = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if item is None:
+                    continue
+                leftover.append(item)
+            if leftover:
+                await flush(leftover)
+            # Graceful shutdown: do not re-raise.
 
     # ----- page-level listeners --------------------------------------------
 

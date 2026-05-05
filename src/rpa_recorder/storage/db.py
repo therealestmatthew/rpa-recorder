@@ -7,7 +7,7 @@ UUID primary keys stored as `String(36)` for SQLite portability. Repositories in
 """
 
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -221,6 +221,47 @@ class LLMCallRow(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class BronzeArtifactRow(Base):
+    """`bronze_artifacts` table: backend-agnostic pointers to bronze-tier files.
+
+    Each row points at one file in the bronze store (`raw_events.jsonl`, a
+    HAR, a screenshot, etc.). Optional FKs let queries roll bronze artifacts
+    up to a recording, run, or attempt without scanning the file tree.
+
+    The path is store-relative (forward slashes, no backend prefix); the
+    backend joins it under its own root.
+    """
+
+    __tablename__ = "bronze_artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    path: Mapped[str] = mapped_column(String(2048), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+
+    recording_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("recordings.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("run_results.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    attempt_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("execution_attempts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 def create_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
