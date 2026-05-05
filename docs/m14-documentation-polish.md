@@ -83,7 +83,7 @@ Sections, in order matching the data flow:
 
 1. **Capture (page-side JS)** — `page_scripts/recorder/inject.js`; depends on Playwright; extension via `page_scripts/{recorder,replay,shared}/`; → [m6.5](m6.5-page-scripts-and-bronze.md).
 2. **Bronze (raw artifacts)** — `BronzeStore`, `LocalFilesystemStore`, `bronze_artifacts` table; depends on filesystem + DB; extension via implementing `BronzeStore` Protocol (S3 / MinIO future); → [m6.5](m6.5-page-scripts-and-bronze.md).
-3. **Silver (validated rows)** — the seven SQLAlchemy tables; depends on bronze for promotion source; extension via new `*Repository` classes; → [m5](m5-storage-layer.md).
+3. **Silver (validated rows)** — the seven SQLAlchemy tables; depends on bronze for promotion source; extension via new `*Repository` classes; → [_archive/m5](_archive/m5-storage-layer.md).
 4. **Gold (analytics)** — hot SQLite tables + cold DuckDB-on-Parquet; depends on silver; extension via new gold tables in `medallion/gold_hot.py` or `gold_cold.py`; → [m11.5](m11.5-workers-and-medallion-promotion.md).
 5. **Heuristic classifier** — `classifier/heuristic/` three-pipeline architecture; depends on M2 models; extension via new rule modules in `filters/`, `normalizers/`, `classifiers/`; → [m7](m7-heuristic-classifier.md).
 6. **LLM classifier** — `classifier/llm/` pluggable backends/prompts/parsers; depends on heuristic; extension via new backend / prompt / merge strategy; → [m9](m9-llm-classifier.md).

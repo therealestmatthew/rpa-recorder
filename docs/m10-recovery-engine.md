@@ -2,7 +2,7 @@
 
 **Status:** pending
 
-**Source:** [.claude/plans/bootstrap.md](../.claude/plans/bootstrap.md) §Recovery; [build-plan.md](build-plan.md) §Concurrency conventions; [m6-executor.md](m6-executor.md) §Notes for M10 (the integration hook). Replaces the original sketch with a per-strategy module layout, failure-mode preconditions, post-recovery verification, and explicit composition with M9's LLM primitives.
+**Source:** [.claude/plans/bootstrap.md](../.claude/plans/bootstrap.md) §Recovery; [build-plan.md](build-plan.md) §Concurrency conventions; [_archive/m6-executor.md](_archive/m6-executor.md) §Notes for M10 (the integration hook). Replaces the original sketch with a per-strategy module layout, failure-mode preconditions, post-recovery verification, and explicit composition with M9's LLM primitives.
 
 ## Goal
 

@@ -25,3 +25,4 @@ traces/
 # local agent / IDE workspace
 .claude/
 CLAUDE.md
+.gitnexus/

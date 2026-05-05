@@ -12,12 +12,12 @@
 
 | # | Milestone | Status | Doc |
 |---|---|---|---|
-| M1 | Project scaffold | ✅ done | [m1-project-scaffold.md](m1-project-scaffold.md) |
-| M2 | Data models | ✅ done | [m2-data-models.md](m2-data-models.md) |
-| M3 | BrowserSession | ✅ done | [m3-browser-session.md](m3-browser-session.md) |
-| M4 | Recorder + JS | ✅ done | [m4-recorder.md](m4-recorder.md) |
-| M5 | Storage layer | ✅ done | [m5-storage-layer.md](m5-storage-layer.md) |
-| M6 | Executor | ✅ done | [m6-executor.md](m6-executor.md) |
+| M1 | Project scaffold | ✅ done | [_archive/m1-project-scaffold.md](_archive/m1-project-scaffold.md) |
+| M2 | Data models | ✅ done | [_archive/m2-data-models.md](_archive/m2-data-models.md) |
+| M3 | BrowserSession | ✅ done | [_archive/m3-browser-session.md](_archive/m3-browser-session.md) |
+| M4 | Recorder + JS | ✅ done | [_archive/m4-recorder.md](_archive/m4-recorder.md) |
+| M5 | Storage layer | ✅ done | [_archive/m5-storage-layer.md](_archive/m5-storage-layer.md) |
+| M6 | Executor | ✅ done | [_archive/m6-executor.md](_archive/m6-executor.md) |
 | **M6.5** | **Page scripts + bronze layer** *(retrofit)* | 🆕 pending | [m6.5-page-scripts-and-bronze.md](m6.5-page-scripts-and-bronze.md) |
 | M7 | Heuristic classifier | 🟡 in progress | [m7-heuristic-classifier.md](m7-heuristic-classifier.md) |
 | M8 | CLI commands | ⬜ pending | [m8-cli-commands.md](m8-cli-commands.md) |
