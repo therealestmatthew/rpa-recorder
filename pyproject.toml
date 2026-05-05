@@ -78,7 +78,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S", "ARG", "PLR"]
+# Tests freely use small sync I/O for assertions; ASYNC240 (no Path methods in
+# async fns) is too strict for tiny .exists() checks.
+"tests/**/*.py" = ["S", "ARG", "PLR", "ASYNC240"]
 "src/rpa_recorder/cli.py" = ["B008"]  # typer uses B008 by design
 
 [tool.ruff.lint.flake8-type-checking]
