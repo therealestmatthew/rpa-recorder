@@ -44,6 +44,7 @@ async def _record_async(*, name: str, url: str, headless: bool) -> None:
     await init_database()
     session_factory = make_session_factory()
     bronze_factory = make_bronze_writer_factory()
+    interrupted = False
 
     async with session_factory() as db:
         bronze = bronze_factory(db)
@@ -59,11 +60,20 @@ async def _record_async(*, name: str, url: str, headless: bool) -> None:
                 await session.page.goto(url)
                 console.print("[dim]Recording. Press Ctrl+C to stop.[/dim]")
                 await asyncio.Event().wait()
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                # Expected stop signal. Swallow so the surrounding session
+                # context exits cleanly and commits the save below; otherwise
+                # get_session() would roll back on the way out. Re-raise after
+                # the commit so run_async maps it to exit code 130.
+                interrupted = True
             finally:
                 await recorder.stop()
-                recording = _classify(recorder.get_recording())
-                await RecordingRepository(db).save(recording)
-                console.print(f"[success]Saved recording {recording.id}[/success]")
+            recording = _classify(recorder.get_recording())
+            await RecordingRepository(db).save(recording)
+            console.print(f"[success]Saved recording {recording.id}[/success]")
+
+    if interrupted:
+        raise KeyboardInterrupt
 
 
 def _classify(recording: Recording) -> Recording:
