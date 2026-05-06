@@ -103,7 +103,9 @@ def test_classify_updates_intent_fields(patched_engine: AsyncEngine) -> None:
     assert action.semantic_intent is SemanticIntent.LOGIN
     assert action.classification_confidence == pytest.approx(0.95)
     assert action.classification_reasoning is not None
-    assert action.classification_reasoning.startswith("[login]")
+    # M9 hybrid prefixes heuristic verdicts with `heuristic:` so silver readers
+    # can split heuristic-vs-LLM accuracy without a separate `source` column.
+    assert action.classification_reasoning.startswith("[heuristic:login]")
 
 
 def test_classify_idempotent(patched_engine: AsyncEngine) -> None:

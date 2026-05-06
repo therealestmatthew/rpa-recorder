@@ -1,18 +1,21 @@
-"""`rpa classify <id>` — re-run the M7 heuristic over a saved recording.
+"""`rpa classify <id>` — re-classify a saved recording with the hybrid classifier.
 
-The command loads the recording, reruns `default_pipeline()` against it, and
-overwrites the `semantic_intent`, `classification_confidence`, and
-`classification_reasoning` columns. Reasoning is prefixed with `[<source>]`
-so M11.5 can decide later whether `source` deserves its own column.
-M9 extends this command to consult the LLM tier when the heuristic's
-confidence falls below `Config.classifier_confidence_threshold`.
+Loads the recording, runs `default_classifier()` (M9 hybrid: M7 heuristic
+first, LLM tier on uncertain actions), and overwrites `semantic_intent`,
+`classification_confidence`, and `classification_reasoning`. Reasoning is
+prefixed with `[<source>]` so M11.5 can break out heuristic-vs-LLM
+accuracy from the column without a separate `source` field.
+
+Bronze writes for the LLM tier are skipped from the CLI path (no
+session-binding plumbing here). M11.5's worker wires up the full
+bronze + silver persistence per call.
 """
 
 from uuid import UUID
 
 import typer
 
-from rpa_recorder.classifier.heuristic import default_pipeline
+from rpa_recorder.classifier import default_classifier
 from rpa_recorder.cli.app import app
 from rpa_recorder.cli.async_runner import run_async
 from rpa_recorder.cli.console import console
@@ -26,7 +29,7 @@ from rpa_recorder.storage.repositories import RecordingRepository
 def classify(
     recording_id: str = typer.Argument(..., help="UUID of the recording to classify."),
 ) -> None:
-    """Re-run the heuristic classifier over a saved recording."""
+    """Re-run the hybrid classifier (heuristic + LLM) over a saved recording."""
     run_async(_classify_async)(recording_id=recording_id)
 
 
@@ -38,27 +41,31 @@ async def _classify_async(*, recording_id: str) -> None:
 
     await init_database()
     session_factory = make_session_factory()
+
     async with session_factory() as db:
-        repo = RecordingRepository(db)
-        recording = await repo.get(rec_uuid)
+        recording = await RecordingRepository(db).get(rec_uuid)
         if recording is None:
             raise CLIError(f"Recording not found: {rec_uuid}")
-        engine = default_pipeline()
-        classified = engine.process(recording.actions)
-        new_actions = [
-            action.model_copy(
-                update={
-                    "semantic_intent": verdict.intent,
-                    "classification_confidence": verdict.confidence,
-                    "classification_reasoning": (f"[{verdict.source}] {verdict.reasoning}"),
-                }
-            )
-            for action, verdict in classified
-        ]
-        # Replace by deleting + re-saving with classified actions. Simpler than
-        # crafting a partial update and within the same transaction.
+
+    classifier = default_classifier(session_factory=session_factory)
+    verdicts = await classifier.classify_batch(recording.actions)
+
+    new_actions = [
+        action.model_copy(
+            update={
+                "semantic_intent": verdict.intent,
+                "classification_confidence": verdict.confidence,
+                "classification_reasoning": f"[{verdict.source}] {verdict.reasoning}",
+            }
+        )
+        for action, verdict in zip(recording.actions, verdicts, strict=True)
+    ]
+
+    async with session_factory() as db:
+        repo = RecordingRepository(db)
         await repo.delete(rec_uuid)
         await repo.save(recording.model_copy(update={"actions": new_actions}))
+
     console.print(
-        f"[success]Re-classified {len(classified)} actions for recording {rec_uuid}[/success]"
+        f"[success]Re-classified {len(new_actions)} actions for recording {rec_uuid}[/success]"
     )

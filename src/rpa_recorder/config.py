@@ -14,6 +14,13 @@ class Config(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     classifier_confidence_threshold: float = 0.7
 
+    # LLM classifier (M9).
+    llm_model: str = "claude-sonnet-4-6"
+    llm_max_concurrency: int = 5
+    llm_cache_ttl_s: int = 86400
+    llm_daily_budget_usd: float = 5.0
+    llm_request_timeout_s: float = 60.0
+
     screenshots_dir: Path = Path("screenshots")
     traces_dir: Path = Path("traces")
     recordings_dir: Path = Path("recordings")
