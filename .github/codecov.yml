@@ -1,0 +1,13 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 1%
+    patch:
+      default:
+        target: 75%
+ignore:
+  - tests/
+  - "src/rpa_recorder/page_scripts/**/*.js"
+  - "src/rpa_recorder/__main__.py"

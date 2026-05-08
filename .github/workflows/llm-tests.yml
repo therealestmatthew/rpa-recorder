@@ -1,0 +1,29 @@
+name: LLM tests
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Mondays 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  llm:
+    if: ${{ github.repository_owner == github.actor || github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-environment
+      - name: Run LLM tests (graceful on empty collection)
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RPA_RUN_LLM_TESTS: "1"
+        run: |
+          set +e
+          uv run pytest -m "llm" --cov-report=term
+          code=$?
+          if [ $code -eq 5 ]; then
+            echo "::notice::No LLM tests collected — passing (M9 LLM tier not yet landed)"
+            exit 0
+          fi
+          exit $code

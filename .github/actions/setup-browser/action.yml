@@ -1,0 +1,7 @@
+name: Setup browser
+description: Install Playwright Chromium with system deps
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: uv run playwright install --with-deps chromium

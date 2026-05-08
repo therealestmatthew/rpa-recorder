@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_CACHE_DIR: ~/.cache/uv
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-environment
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-environment
+      - run: uv run mypy src/ tests/
+
+  unit:
+    needs: [lint, typecheck]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-environment
+      - run: uv run pytest -m "not integration and not llm and not worker" --cov-report=xml --cov-report=term
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit-${{ matrix.os }}
+          path: coverage.xml
+
+  integration:
+    needs: [unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-environment
+      - uses: ./.github/actions/setup-browser
+      - run: uv run pytest -m "integration and not llm and not worker" --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('coverage.xml') != ''
+        with:
+          name: coverage-integration
+          path: coverage.xml
+
+  worker:
+    needs: [unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      RPA_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-environment
+      - uses: ./.github/actions/setup-browser
+      - name: Run worker tests (graceful on empty collection)
+        shell: bash
+        run: |
+          set +e
+          uv run pytest -m "worker and not llm" --cov-report=xml
+          code=$?
+          if [ $code -eq 5 ]; then
+            echo "::notice::No worker tests collected — passing (M11.5 workers not yet landed)"
+            exit 0
+          fi
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('coverage.xml') != ''
+        with:
+          name: coverage-worker
+          path: coverage.xml
+
+  coverage:
+    needs: [unit, integration, worker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: false
+          path: coverage-artifacts/
+      - uses: codecov/codecov-action@v4
+        with:
+          directory: ./coverage-artifacts
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
