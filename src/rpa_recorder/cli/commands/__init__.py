@@ -39,3 +39,5 @@ from rpa_recorder.cli.commands import classify
 from rpa_recorder.cli.commands import replay
 from rpa_recorder.cli.commands import confirm
 from rpa_recorder.cli.commands import serve
+from rpa_recorder.cli.commands import worker
+from rpa_recorder.cli.commands import medallion
