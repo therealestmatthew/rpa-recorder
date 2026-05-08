@@ -59,6 +59,7 @@ class ElementSelector(BaseModel):
     css: str | None = None
     xpath: str | None = None
     nth: int | None = None
+    frame_url: str | None = None
 
 
 class ElementContext(BaseModel):

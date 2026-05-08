@@ -60,7 +60,7 @@ async def _record_async(*, name: str, url: str, headless: bool) -> None:
                 await session.page.goto(url)
                 console.print("[dim]Recording. Press Ctrl+C to stop.[/dim]")
                 await asyncio.Event().wait()
-            except (KeyboardInterrupt, asyncio.CancelledError):
+            except KeyboardInterrupt, asyncio.CancelledError:
                 # Expected stop signal. Swallow so the surrounding session
                 # context exits cleanly and commits the save below; otherwise
                 # get_session() would roll back on the way out. Re-raise after

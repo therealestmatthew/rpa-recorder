@@ -48,13 +48,84 @@ from rpa_recorder.models import (
 )
 
 if TYPE_CHECKING:
-    from playwright.async_api import Locator, Page
+    from playwright.async_api import Frame, Locator, Page
 
     from rpa_recorder.medallion import BronzeWriter
+    from rpa_recorder.recovery import RecoveryContext, RecoveryEngine
 
 
 class SelectorResolutionError(Exception):
     """Raised when no `ElementSelector` strategy resolves to exactly one element."""
+
+
+async def resolve_selector(
+    page: Page,
+    sel: ElementSelector,
+) -> tuple[Locator, ElementSelector]:
+    """Try `sel`'s strategies in robustness order; return the locator + the winning selector.
+
+    Module-level so the recovery engine's verifier can reuse the exact same
+    multi-strategy resolution path the executor uses on retry. When
+    `sel.frame_url` is set the resolution scopes to that frame instead of the
+    main page so `frame_switch` recoveries land on the correct frame.
+    """
+    scope: Page | Frame = page
+    if sel.frame_url:
+        for frame in page.frames:
+            if frame.url == sel.frame_url:
+                scope = frame
+                break
+
+    candidates: list[tuple[Locator, ElementSelector]] = []
+    if sel.test_id:
+        candidates.append(
+            (
+                scope.get_by_test_id(sel.test_id),
+                ElementSelector(test_id=sel.test_id, frame_url=sel.frame_url),
+            )
+        )
+    if sel.role and sel.accessible_name:
+        candidates.append(
+            (
+                scope.get_by_role(sel.role, name=sel.accessible_name),  # type: ignore[arg-type]
+                ElementSelector(
+                    role=sel.role,
+                    accessible_name=sel.accessible_name,
+                    frame_url=sel.frame_url,
+                ),
+            )
+        )
+    if sel.text_content:
+        candidates.append(
+            (
+                scope.get_by_text(sel.text_content, exact=True),
+                ElementSelector(text_content=sel.text_content, frame_url=sel.frame_url),
+            )
+        )
+    if sel.css:
+        candidates.append(
+            (
+                scope.locator(sel.css),
+                ElementSelector(css=sel.css, frame_url=sel.frame_url),
+            )
+        )
+    if sel.xpath:
+        candidates.append(
+            (
+                scope.locator(f"xpath={sel.xpath}"),
+                ElementSelector(xpath=sel.xpath, frame_url=sel.frame_url),
+            )
+        )
+
+    for locator, used in candidates:
+        try:
+            count = await locator.count()
+        except PlaywrightError:
+            continue
+        if count == 1:
+            return locator, used
+
+    raise SelectorResolutionError(f"no selector strategy resolved uniquely for {sel.model_dump()}")
 
 
 def _classify_failure(error: BaseException) -> FailureMode:
@@ -83,6 +154,8 @@ class Executor:
         bronze: BronzeWriter | None = None,
         parameter_values: dict[str, str] | None = None,
         run_id: UUID | None = None,
+        recovery_engine: RecoveryEngine | None = None,
+        recovery_context: RecoveryContext | None = None,
     ) -> None:
         if bronze is None and (screenshots_dir is None or dom_dir is None):
             raise ValueError(
@@ -96,6 +169,8 @@ class Executor:
         self._bronze = bronze
         self._parameter_values = dict(parameter_values or {})
         self._run_id = run_id or uuid4()
+        self._recovery_engine = recovery_engine
+        self._recovery_context = recovery_context
         self._console_log: list[str] = []
         self._js_errors: list[str] = []
         self._page.on("console", self._on_console)
@@ -216,55 +291,8 @@ class Executor:
     # ----- selector resolution ---------------------------------------------
 
     async def _resolve_selector(self, sel: ElementSelector) -> tuple[Locator, ElementSelector]:
-        """Try strategies in order; return the locator + the selector that won."""
-        candidates: list[tuple[Locator, ElementSelector]] = []
-        if sel.test_id:
-            candidates.append(
-                (
-                    self._page.get_by_test_id(sel.test_id),
-                    ElementSelector(test_id=sel.test_id),
-                )
-            )
-        if sel.role and sel.accessible_name:
-            candidates.append(
-                (
-                    self._page.get_by_role(sel.role, name=sel.accessible_name),  # type: ignore[arg-type]
-                    ElementSelector(role=sel.role, accessible_name=sel.accessible_name),
-                )
-            )
-        if sel.text_content:
-            candidates.append(
-                (
-                    self._page.get_by_text(sel.text_content, exact=True),
-                    ElementSelector(text_content=sel.text_content),
-                )
-            )
-        if sel.css:
-            candidates.append(
-                (
-                    self._page.locator(sel.css),
-                    ElementSelector(css=sel.css),
-                )
-            )
-        if sel.xpath:
-            candidates.append(
-                (
-                    self._page.locator(f"xpath={sel.xpath}"),
-                    ElementSelector(xpath=sel.xpath),
-                )
-            )
-
-        for locator, used in candidates:
-            try:
-                count = await locator.count()
-            except PlaywrightError:
-                continue
-            if count == 1:
-                return locator, used
-
-        raise SelectorResolutionError(
-            f"no selector strategy resolved uniquely for {sel.model_dump()}"
-        )
+        """Delegate to the module-level resolver so recovery shares the same path."""
+        return await resolve_selector(self._page, sel)
 
     # ----- typed dispatch ---------------------------------------------------
 
@@ -401,15 +429,34 @@ class Executor:
             "a11y": str(a11y_path) if a11y_path.exists() else None,
         }
 
-    # ----- recovery hook (filled in M10) -----------------------------------
+    # ----- recovery hook ---------------------------------------------------
 
     async def _attempt_recovery(
         self,
-        action: RecordedAction,  # noqa: ARG002
-        attempt: ExecutionAttempt,  # noqa: ARG002
+        action: RecordedAction,
+        attempt: ExecutionAttempt,
     ) -> RecoveryAction | None:
-        """Stub: M10 will plug the `RecoveryEngine` in here."""
-        return None
+        """Run the wired `RecoveryEngine`; return None if no engine is configured."""
+        if self._recovery_engine is None:
+            return None
+        # Local import: RecoveryContext lives in the recovery package, which
+        # imports from the browser package via local imports inside strategies.
+        # Importing it at module load would create a cycle.
+        from rpa_recorder.recovery import RecoveryContext  # noqa: PLC0415
+
+        ctx = self._recovery_context or RecoveryContext()
+        execution_view = ActionExecution(
+            action_id=action.id,
+            status=ExecutionStatus.FAILED,
+            attempts=[attempt],
+            duration_ms=None,
+        )
+        return await self._recovery_engine.attempt(
+            failed=execution_view,
+            page=self._page,
+            original=action,
+            ctx=ctx,
+        )
 
     # ----- page-level listeners --------------------------------------------
 

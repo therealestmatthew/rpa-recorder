@@ -21,6 +21,11 @@ class Config(BaseSettings):
     llm_daily_budget_usd: float = 5.0
     llm_request_timeout_s: float = 60.0
 
+    # Recovery engine (M10).
+    recovery_max_depth: int = 1
+    recovery_strategy_timeout_s: float = 10.0
+    recovery_llm_timeout_s: float = 30.0
+
     screenshots_dir: Path = Path("screenshots")
     traces_dir: Path = Path("traces")
     recordings_dir: Path = Path("recordings")
