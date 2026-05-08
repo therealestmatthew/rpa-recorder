@@ -37,4 +37,5 @@ from rpa_recorder.cli.commands import list_recordings
 from rpa_recorder.cli.commands import show
 from rpa_recorder.cli.commands import classify
 from rpa_recorder.cli.commands import replay
+from rpa_recorder.cli.commands import confirm
 from rpa_recorder.cli.commands import serve

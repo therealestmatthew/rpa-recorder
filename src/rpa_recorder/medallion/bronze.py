@@ -36,6 +36,7 @@ class BronzeWriter:
         self._store = store
         self._repo = repo
         self._registered_jsonl: set[UUID] = set()
+        self._registered_reviews: set[UUID] = set()
 
     async def append_event(self, recording_id: UUID, envelope: dict[str, Any]) -> None:
         """Append a single envelope. Convenience wrapper over `append_events`."""
@@ -131,6 +132,40 @@ class BronzeWriter:
             attempt_id=str(attempt_id),
         )
         return path
+
+    async def append_review_decision(self, recording_id: UUID, envelope: dict[str, Any]) -> None:
+        """Append one confirmation decision to reviews/<rec>/decisions.jsonl (M11).
+
+        Best-effort: catches exceptions and logs via structlog. Confirmation
+        flow must never fail because bronze is unhappy.
+        """
+        path = paths.review_audit_jsonl(recording_id)
+        try:
+            await self._store.append_lines(path, [json.dumps(envelope)])
+        except Exception as exc:
+            _log.error(
+                "bronze_append_review_failed",
+                recording_id=str(recording_id),
+                error=str(exc),
+            )
+            return
+        if recording_id not in self._registered_reviews:
+            try:
+                await self._repo.add(
+                    artifact_id=str(uuid4()),
+                    kind="review_audit_jsonl",
+                    path=path,
+                    sha256="",
+                    size_bytes=0,
+                    recording_id=str(recording_id),
+                )
+                self._registered_reviews.add(recording_id)
+            except Exception as exc:
+                _log.error(
+                    "bronze_register_review_failed",
+                    recording_id=str(recording_id),
+                    error=str(exc),
+                )
 
     async def write_llm_call(self, call_id: UUID, payload: dict[str, Any]) -> str:
         """Persist the full request + response JSON for one Anthropic call."""

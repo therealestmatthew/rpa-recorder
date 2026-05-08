@@ -56,6 +56,11 @@ def llm_call(call_id: UUID) -> str:
     return f"llm/{call_id}.json"
 
 
+def review_audit_jsonl(recording_id: UUID) -> str:
+    """Append-only audit log of confirmation decisions for a recording (M11)."""
+    return f"reviews/{recording_id}/decisions.jsonl"
+
+
 __all__ = [
     "attempt_artifact",
     "llm_call",
@@ -64,4 +69,5 @@ __all__ = [
     "recording_events_parquet",
     "recording_har",
     "recording_trace",
+    "review_audit_jsonl",
 ]

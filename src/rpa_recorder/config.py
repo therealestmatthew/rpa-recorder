@@ -26,6 +26,12 @@ class Config(BaseSettings):
     recovery_strategy_timeout_s: float = 10.0
     recovery_llm_timeout_s: float = 30.0
 
+    # Confirmation workflow (M11).
+    confirmation_default_filter: str = "below_threshold"
+    confirmation_default_mode: str = "per_action"
+    confirmation_default_renderer: str = "compact"
+    confirmation_audit_bronze: bool = True
+
     screenshots_dir: Path = Path("screenshots")
     traces_dir: Path = Path("traces")
     recordings_dir: Path = Path("recordings")

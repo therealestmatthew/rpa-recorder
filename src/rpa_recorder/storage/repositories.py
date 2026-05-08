@@ -168,6 +168,31 @@ class RecordingRepository:
         await self._session.flush()
         return True
 
+    async def update_action_classification(
+        self,
+        action_id: UUID,
+        *,
+        intent: SemanticIntent | None = None,
+        user_confirmed: bool | None = None,
+        user_label: str | None = None,
+    ) -> None:
+        """Per-action partial update for the M11 confirmation flow.
+
+        The owning `get_session()` context commits; the runner uses one
+        session per decision so a Ctrl+C-mid-pass keeps reviewed actions.
+        """
+        row = await self._session.get(RecordedActionRow, str(action_id))
+        if row is None:
+            msg = f"action {action_id} not found"
+            raise LookupError(msg)
+        if intent is not None:
+            row.semantic_intent = intent.value
+        if user_confirmed is not None:
+            row.user_confirmed = user_confirmed
+        if user_label is not None:
+            row.user_label = user_label
+        await self._session.flush()
+
     @staticmethod
     def _action_to_row(action: RecordedAction) -> RecordedActionRow:
         return RecordedActionRow(
