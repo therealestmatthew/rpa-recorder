@@ -1,9 +1,4 @@
-"""`rpa serve [--port 8000]` — boot the FastAPI control plane.
-
-The FastAPI app proper is fleshed out in M12; M8 just wires the CLI surface.
-The endpoint module path is `rpa_recorder.api.routes:app` so M12 can land its
-implementation without changing this command.
-"""
+"""`rpa serve [--port 8000]` — boot the FastAPI control plane."""
 
 import importlib
 
@@ -23,7 +18,7 @@ def serve(
     """Boot the FastAPI control plane via uvicorn."""
     uvicorn = importlib.import_module("uvicorn")
     uvicorn.run(
-        "rpa_recorder.api.routes:app",
+        "rpa_recorder.api:app",
         host=host,
         port=port,
         reload=reload,

@@ -15,12 +15,15 @@ caller-supplied `screenshots_dir` / `dom_dir`. This legacy path keeps the
 M6 test suite passing unchanged; new code paths should pass `bronze`.
 """
 
+import asyncio
 import json
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
+
+import structlog
 
 # Runtime imports: Error and TimeoutError are runtime-used in `except` clauses.
 # ConsoleMessage is annotation-only on `_on_console` but Playwright introspects
@@ -48,10 +51,14 @@ from rpa_recorder.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from playwright.async_api import Frame, Locator, Page
 
     from rpa_recorder.medallion import BronzeWriter
     from rpa_recorder.recovery import RecoveryContext, RecoveryEngine
+
+_log = structlog.get_logger(__name__)
 
 
 class SelectorResolutionError(Exception):
@@ -156,6 +163,7 @@ class Executor:
         run_id: UUID | None = None,
         recovery_engine: RecoveryEngine | None = None,
         recovery_context: RecoveryContext | None = None,
+        event_emitter: Callable[[str, dict[str, Any]], Awaitable[None] | None] | None = None,
     ) -> None:
         if bronze is None and (screenshots_dir is None or dom_dir is None):
             raise ValueError(
@@ -171,6 +179,7 @@ class Executor:
         self._run_id = run_id or uuid4()
         self._recovery_engine = recovery_engine
         self._recovery_context = recovery_context
+        self._emit = event_emitter
         self._console_log: list[str] = []
         self._js_errors: list[str] = []
         self._page.on("console", self._on_console)
@@ -187,17 +196,44 @@ class Executor:
         executions: list[ActionExecution] = []
         overall_status = ExecutionStatus.SUCCESS
 
-        for action in self._recording.actions:
-            execution = await self._execute_one(action)
+        await self._emit_safe(
+            "run_started",
+            {
+                "run_id": str(self._run_id),
+                "recording_id": str(self._recording.id),
+                "n_actions": len(self._recording.actions),
+            },
+        )
+
+        for index, action in enumerate(self._recording.actions):
+            execution = await self._execute_one(action, index=index)
             executions.append(execution)
             if execution.status == ExecutionStatus.FAILED:
                 overall_status = ExecutionStatus.FAILED
+
+        ended = datetime.now(UTC)
+        n_succeeded = sum(
+            1
+            for e in executions
+            if e.status in (ExecutionStatus.SUCCESS, ExecutionStatus.RECOVERED)
+        )
+        n_failed = sum(1 for e in executions if e.status == ExecutionStatus.FAILED)
+        await self._emit_safe(
+            "run_finished",
+            {
+                "run_id": str(self._run_id),
+                "status": overall_status.value,
+                "n_succeeded": n_succeeded,
+                "n_failed": n_failed,
+                "duration_ms": int((ended - started).total_seconds() * 1000),
+            },
+        )
 
         return RunResult(
             id=self._run_id,
             recording_id=self._recording.id,
             started_at=started,
-            ended_at=datetime.now(UTC),
+            ended_at=ended,
             status=overall_status,
             parameter_values=dict(self._parameter_values),
             executions=executions,
@@ -205,11 +241,21 @@ class Executor:
 
     # ----- per-action execution ---------------------------------------------
 
-    async def _execute_one(self, action: RecordedAction) -> ActionExecution:
+    async def _execute_one(self, action: RecordedAction, *, index: int = 0) -> ActionExecution:
         attempt_started = datetime.now(UTC)
         console_mark = len(self._console_log)
         errors_mark = len(self._js_errors)
         selector_used: ElementSelector | None = action.selector
+
+        await self._emit_safe(
+            "action_started",
+            {
+                "run_id": str(self._run_id),
+                "action_index": index,
+                "action_id": str(action.id),
+                "action_type": action.action_type.value,
+            },
+        )
 
         try:
             if action.action_type == ActionType.NAVIGATE:
@@ -227,6 +273,7 @@ class Executor:
                 selector_used=selector_used,
                 console_mark=console_mark,
                 errors_mark=errors_mark,
+                index=index,
             )
 
         ended = datetime.now(UTC)
@@ -239,11 +286,21 @@ class Executor:
             console_log=list(self._console_log[console_mark:]),
             js_errors=list(self._js_errors[errors_mark:]),
         )
+        duration_ms = int((ended - attempt_started).total_seconds() * 1000)
+        await self._emit_safe(
+            "action_succeeded",
+            {
+                "run_id": str(self._run_id),
+                "action_index": index,
+                "action_id": str(action.id),
+                "duration_ms": duration_ms,
+            },
+        )
         return ActionExecution(
             action_id=action.id,
             status=ExecutionStatus.SUCCESS,
             attempts=[attempt],
-            duration_ms=int((ended - attempt_started).total_seconds() * 1000),
+            duration_ms=duration_ms,
         )
 
     async def _record_failure(
@@ -255,6 +312,7 @@ class Executor:
         selector_used: ElementSelector | None,
         console_mark: int,
         errors_mark: int,
+        index: int = 0,
     ) -> ActionExecution:
         attempt_id = uuid4()
         ended = datetime.now(UTC)
@@ -263,13 +321,14 @@ class Executor:
             attempt_id=attempt_id,
             attempt_number=1,
         )
+        failure_mode = _classify_failure(error)
         attempt = ExecutionAttempt(
             id=attempt_id,
             attempt_number=1,
             started_at=attempt_started,
             ended_at=ended,
             status=ExecutionStatus.FAILED,
-            failure_mode=_classify_failure(error),
+            failure_mode=failure_mode,
             error_message=str(error),
             selector_used=selector_used,
             screenshot_path=paths["screenshot"],
@@ -277,6 +336,16 @@ class Executor:
             accessibility_snapshot_path=paths["a11y"],
             console_log=list(self._console_log[console_mark:]),
             js_errors=list(self._js_errors[errors_mark:]),
+        )
+        await self._emit_safe(
+            "action_failed",
+            {
+                "run_id": str(self._run_id),
+                "action_index": index,
+                "action_id": str(action.id),
+                "failure_mode": failure_mode.value,
+                "error": str(error),
+            },
         )
         recovery = await self._attempt_recovery(action, attempt)
         recovered = recovery is not None and recovery.succeeded
@@ -457,6 +526,24 @@ class Executor:
             original=action,
             ctx=ctx,
         )
+
+    # ----- event emitter (M12 hook) ----------------------------------------
+
+    async def _emit_safe(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Invoke the optional `event_emitter` and never let it fail a replay."""
+        if self._emit is None:
+            return
+        try:
+            result = self._emit(event_type, payload)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception as exc:
+            _log.warning(
+                "executor_event_emitter_error",
+                event_type=event_type,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
     # ----- page-level listeners --------------------------------------------
 

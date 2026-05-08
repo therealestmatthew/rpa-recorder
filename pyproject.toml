@@ -31,6 +31,10 @@ dependencies = [
     "structlog>=24.4",
     "rich>=13.9",
     "aiofiles>=24",
+    # M12 control plane.
+    "redis>=5.0",
+    "httpx>=0.27",
+    # arq deferred to M11.5; see queues/protocol.py.
 ]
 
 [project.optional-dependencies]
@@ -50,6 +54,10 @@ dev = [
     "types-setuptools",
     "pre-commit>=4.0",
     "types-aiofiles>=25.1.0.20260409",
+    # M12 control plane test fixtures.
+    "fakeredis[lua]>=2.20",
+    "asgi-lifespan>=2.1",
+    "httpx-ws>=0.6",
 ]
 
 [build-system]
@@ -81,9 +89,15 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Tests freely use small sync I/O for assertions; ASYNC240 (no Path methods in
-# async fns) is too strict for tiny .exists() checks.
-"tests/**/*.py" = ["S", "ARG", "PLR", "ASYNC240"]
+# async fns) is too strict for tiny .exists() checks. PLC0415 is relaxed for
+# tests because narrow imports inside test bodies are common.
+"tests/**/*.py" = ["S", "ARG", "PLR", "ASYNC240", "PLC0415"]
 "src/rpa_recorder/cli/**/*.py" = ["B008"]  # typer uses B008 by design
+# FastAPI requires `Request`, `WebSocket`, `UUID` (path params), and
+# `Depends(...)` to be evaluated at runtime so the framework can introspect
+# parameter annotations.
+"src/rpa_recorder/api/dependencies/*.py" = ["TC002"]
+"src/rpa_recorder/api/routers/*.py" = ["B008", "TC002", "TC003"]
 
 [tool.ruff.lint.flake8-type-checking]
 # Pydantic, pydantic-settings, and SQLAlchemy ORM all introspect class

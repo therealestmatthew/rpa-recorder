@@ -51,6 +51,15 @@ class Config(BaseSettings):
     default_browser: Literal["chromium"] = "chromium"
     default_headless: bool = False
 
+    # FastAPI control plane (M12).
+    redis_url: str = "redis://localhost:6379/0"
+    queue_backend: Literal["in_process", "arq"] = "in_process"
+    max_queue_depth: int = 100
+    rate_limit_per_minute: int = 60
+    ws_heartbeat_s: float = 30.0
+    ws_event_buffer_size: int = 1000
+    api_event_dedup_window: int = 64
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="RPA_",

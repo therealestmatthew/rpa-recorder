@@ -47,7 +47,7 @@ def test_serve_invokes_uvicorn_run(monkeypatch: pytest.MonkeyPatch) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert captured["target"] == "rpa_recorder.api.routes:app"
+    assert captured["target"] == "rpa_recorder.api:app"
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 9000
     assert captured["reload"] is False

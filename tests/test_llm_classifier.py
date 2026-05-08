@@ -168,7 +168,7 @@ async def test_classify_writes_silver_row(
     await classifier.classify(action, [action])
 
     async with get_session(db_engine) as db:
-        from sqlalchemy import select  # noqa: PLC0415
+        from sqlalchemy import select
 
         rows = (await db.execute(select(LLMCallRow))).scalars().all()
         assert len(rows) == 1
@@ -266,8 +266,8 @@ async def test_classify_partial_persistence_failure_does_not_raise(
 
 def test_default_classifier_factory_wires_components() -> None:
     """`default_classifier()` constructs a hybrid `Classifier` without touching the network."""
-    from rpa_recorder.classifier.llm import Classifier as HybridClassifier  # noqa: PLC0415
-    from rpa_recorder.classifier.llm import default_classifier  # noqa: PLC0415
+    from rpa_recorder.classifier.llm import Classifier as HybridClassifier
+    from rpa_recorder.classifier.llm import default_classifier
 
     class _DummyClient:
         class messages:  # noqa: N801
