@@ -37,6 +37,8 @@ from rpa_recorder.storage.db import (
     ActionExecutionRow,
     BronzeArtifactRow,
     ExecutionAttemptRow,
+    GoldRecordingMetricsRow,
+    GoldRunDashboardRow,
     NetworkEventRow,
     RecordedActionRow,
     RecordingRow,
@@ -485,6 +487,113 @@ class BronzeArtifactRepository:
             select(BronzeArtifactRow)
             .where(BronzeArtifactRow.attempt_id == str(attempt_id))
             .order_by(BronzeArtifactRow.created_at)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_all(self) -> list[BronzeArtifactRow]:
+        """Return every pointer row, oldest first. Used by retention pruning."""
+        stmt = select(BronzeArtifactRow).order_by(BronzeArtifactRow.created_at)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def delete_by_id(self, artifact_id: str) -> None:
+        """Idempotent delete by primary key."""
+        row = await self._session.get(BronzeArtifactRow, artifact_id)
+        if row is not None:
+            await self._session.delete(row)
+            await self._session.flush()
+
+
+class GoldHotRepository:
+    """Upserts for the hot gold tables (M11.5).
+
+    `recompute_gold_hot(...)` builds rows from silver and pushes them through
+    these methods. Idempotent: re-running with the same primary key updates
+    the existing row instead of inserting a duplicate.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def upsert_recording_metrics(
+        self,
+        *,
+        recording_id: str,
+        total_runs: int,
+        success_rate: float,
+        avg_duration_ms: int,
+        classifier_confidence_avg: float,
+        last_replayed_at: datetime | None,
+        computed_at: datetime,
+    ) -> None:
+        existing = await self._session.get(GoldRecordingMetricsRow, recording_id)
+        if existing is None:
+            self._session.add(
+                GoldRecordingMetricsRow(
+                    recording_id=recording_id,
+                    total_runs=total_runs,
+                    success_rate=success_rate,
+                    avg_duration_ms=avg_duration_ms,
+                    classifier_confidence_avg=classifier_confidence_avg,
+                    last_replayed_at=last_replayed_at,
+                    computed_at=computed_at,
+                ),
+            )
+        else:
+            existing.total_runs = total_runs
+            existing.success_rate = success_rate
+            existing.avg_duration_ms = avg_duration_ms
+            existing.classifier_confidence_avg = classifier_confidence_avg
+            existing.last_replayed_at = last_replayed_at
+            existing.computed_at = computed_at
+        await self._session.flush()
+
+    async def upsert_run_dashboard_row(
+        self,
+        *,
+        run_date: Any,
+        recording_id: str,
+        runs_total: int,
+        runs_success: int,
+        runs_failed: int,
+        runs_recovered: int,
+        computed_at: datetime,
+    ) -> None:
+        stmt = select(GoldRunDashboardRow).where(
+            GoldRunDashboardRow.date == run_date,
+            GoldRunDashboardRow.recording_id == recording_id,
+        )
+        existing = (await self._session.execute(stmt)).scalar_one_or_none()
+        if existing is None:
+            self._session.add(
+                GoldRunDashboardRow(
+                    date=run_date,
+                    recording_id=recording_id,
+                    runs_total=runs_total,
+                    runs_success=runs_success,
+                    runs_failed=runs_failed,
+                    runs_recovered=runs_recovered,
+                    computed_at=computed_at,
+                ),
+            )
+        else:
+            existing.runs_total = runs_total
+            existing.runs_success = runs_success
+            existing.runs_failed = runs_failed
+            existing.runs_recovered = runs_recovered
+            existing.computed_at = computed_at
+        await self._session.flush()
+
+    async def get_recording_metrics(
+        self, recording_id: str
+    ) -> GoldRecordingMetricsRow | None:
+        return await self._session.get(GoldRecordingMetricsRow, recording_id)
+
+    async def list_dashboard_rows(self) -> list[GoldRunDashboardRow]:
+        stmt = select(GoldRunDashboardRow).order_by(
+            GoldRunDashboardRow.date,
+            GoldRunDashboardRow.recording_id,
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

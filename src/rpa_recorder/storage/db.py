@@ -8,18 +8,22 @@ UUID primary keys stored as `String(36)` for SQLite portability. Repositories in
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from datetime import date as date_
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
+    event,
 )
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -264,9 +268,80 @@ class BronzeArtifactRow(Base):
     )
 
 
+class GoldRecordingMetricsRow(Base):
+    """`gold_recording_metrics` table: per-recording aggregate metrics (M11.5).
+
+    Recomputed by `recompute_gold_hot(...)`. Hourly cron + on-demand from
+    M11 confirmation flow. Idempotent via primary-key upsert.
+    """
+
+    __tablename__ = "gold_recording_metrics"
+
+    recording_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("recordings.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    total_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    avg_duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    classifier_confidence_avg: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    last_replayed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+
+
+class GoldRunDashboardRow(Base):
+    """`gold_run_dashboard` table: per-day-per-recording roll-up (M11.5).
+
+    Populated by `recompute_gold_hot(...)`. Composite PK lets a query select
+    a date range without scanning the whole table. Idempotent: a re-run for
+    the same `(date, recording_id)` upserts the counts.
+    """
+
+    __tablename__ = "gold_run_dashboard"
+
+    date: Mapped[date_] = mapped_column(Date, nullable=False)
+    recording_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    runs_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    runs_success: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    runs_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    runs_recovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+
+    __table_args__ = (PrimaryKeyConstraint("date", "recording_id"),)
+
+
+def _set_sqlite_pragmas(dbapi_connection: Any, _connection_record: Any) -> None:
+    """Apply WAL + busy_timeout to every SQLite connection.
+
+    Why: M11.5 introduces multi-worker write contention. Without WAL, SQLite
+    serializes everything on a single global writer. busy_timeout=5000 makes
+    brief contention wait instead of raising `database is locked`.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cursor.close()
+
+
 def create_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
     """Construct an `AsyncEngine` with project defaults (no pooling tweaks)."""
-    return create_async_engine(database_url, echo=echo, future=True)
+    engine = create_async_engine(database_url, echo=echo, future=True)
+    if database_url.startswith("sqlite"):
+        event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
+    return engine
 
 
 async def init_db(engine: AsyncEngine) -> None:

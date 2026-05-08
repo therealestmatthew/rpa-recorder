@@ -60,6 +60,9 @@ class Config(BaseSettings):
     ws_event_buffer_size: int = 1000
     api_event_dedup_window: int = 64
 
+    # Medallion silver/gold (M11.5).
+    gold_cold_root: Path = Path("data/gold/cold")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="RPA_",
