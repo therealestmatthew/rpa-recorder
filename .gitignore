@@ -27,3 +27,8 @@ data/
 .claude/
 CLAUDE.md
 .gitnexus/
+
+# npm artifacts from gitnexus tooling (this is a uv-managed Python project)
+node_modules/
+package.json
+package-lock.json
