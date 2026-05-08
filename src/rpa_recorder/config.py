@@ -63,6 +63,14 @@ class Config(BaseSettings):
     # Medallion silver/gold (M11.5).
     gold_cold_root: Path = Path("data/gold/cold")
 
+    # Workers (M11.5).
+    worker_concurrency: int = 5
+    worker_replay_max_jobs: int = 2
+    worker_medallion_max_jobs: int = 10
+    worker_shutdown_timeout: int = 60
+    worker_keep_result: int = 3600
+    worker_replay_job_timeout: int = 1800
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="RPA_",

@@ -57,7 +57,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "compact_bronze_to_parquet": _noop_handler,
             "prune_old_artifacts": _noop_handler,
         }
-        queue_pool = make_queue_pool(config.queue_backend, redis=redis, registry=registry)
+        queue_pool = await make_queue_pool(
+            config.queue_backend,
+            redis=redis,
+            registry=registry,
+            redis_url=config.redis_url,
+        )
         app.state.queue_pool = queue_pool
 
     ws_manager = getattr(app.state, "ws_manager", None)

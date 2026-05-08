@@ -37,6 +37,7 @@ dependencies = [
     # arq deferred to M11.5; see queues/protocol.py.
     "pyarrow>=24.0.0",
     "duckdb>=1.5.2",
+    "arq>=0.28.0",
 ]
 
 [project.optional-dependencies]

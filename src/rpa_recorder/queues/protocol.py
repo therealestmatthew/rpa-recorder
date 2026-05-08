@@ -57,27 +57,34 @@ class QueuePool(Protocol):
         ...
 
 
-def make_queue_pool(
+async def make_queue_pool(
     backend: str,
     *,
     redis: Redis,
     registry: dict[str, Callable[..., Awaitable[Any]]],
+    redis_url: str | None = None,
 ) -> QueuePool:
     """Construct the configured backend.
 
-    `backend == "in_process"` returns an `InProcessQueuePool`. `backend == "arq"`
-    raises until M11.5 lands `ArqQueuePool`.
+    `backend == "in_process"` returns an `InProcessQueuePool`.
+    `backend == "arq"` returns an `ArqQueuePool` (M11.5) — needs `redis_url`
+    so it can build an `ArqRedis` pool against the same instance.
     """
     if backend == "in_process":
         from rpa_recorder.queues.in_process import InProcessQueuePool  # noqa: PLC0415
 
         return InProcessQueuePool(redis=redis, registry=registry)
     if backend == "arq":
-        msg = (
-            "queue_backend=arq requires M11.5 — install arq and provide ArqQueuePool. "
-            "Set RPA_QUEUE_BACKEND=in_process for now."
-        )
-        raise RuntimeError(msg)
+        if redis_url is None:
+            msg = "queue_backend=arq requires redis_url for ARQ pool construction"
+            raise ValueError(msg)
+        from arq import create_pool  # noqa: PLC0415
+        from arq.connections import RedisSettings  # noqa: PLC0415
+
+        from rpa_recorder.queues.arq import ArqQueuePool  # noqa: PLC0415
+
+        arq_pool = await create_pool(RedisSettings.from_dsn(redis_url))
+        return ArqQueuePool(redis=redis, arq_pool=arq_pool)
     msg = f"unknown queue_backend: {backend!r}"
     raise ValueError(msg)
 

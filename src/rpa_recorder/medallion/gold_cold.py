@@ -202,7 +202,7 @@ class ColdGold:
         """
         con = duckdb.connect(database=":memory:", read_only=False)
         try:
-            return con.sql(sql).to_arrow_table()  # type: ignore[no-any-return]
+            return con.sql(sql).to_arrow_table()
         finally:
             con.close()
 

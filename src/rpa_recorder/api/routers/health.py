@@ -37,7 +37,7 @@ async def readyz(
     except Exception:
         status["db"] = "fail"
     try:
-        await redis.ping()  # type: ignore[misc]
+        await redis.ping()
     except Exception:
         status["redis"] = "fail"
     try:

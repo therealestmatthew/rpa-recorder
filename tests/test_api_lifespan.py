@@ -36,7 +36,12 @@ async def test_lifespan_chooses_in_process_pool_by_default(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_lifespan_arq_backend_raises(tmp_path):
+async def test_lifespan_arq_backend_constructs_arq_queue_pool(tmp_path):
+    """M11.5 makes `queue_backend=arq` work: lifespan builds an `ArqQueuePool`."""
+    from unittest.mock import AsyncMock
+
+    from rpa_recorder.queues.arq import ArqQueuePool
+
     config = Config(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 't.db'}",
         queue_backend="arq",
@@ -45,12 +50,21 @@ async def test_lifespan_arq_backend_raises(tmp_path):
     import fakeredis.aioredis
 
     fake = fakeredis.aioredis.FakeRedis()
+    fake_arq_pool = AsyncMock()
+    fake_arq_pool.close = AsyncMock()
     with (
-        patch("rpa_recorder.api.lifespan.Redis.from_url", return_value=fake),
-        pytest.raises(RuntimeError, match=r"M11\.5"),
+        patch(
+            "rpa_recorder.api.lifespan.Redis.from_url",
+            return_value=fake,
+        ),
+        patch(
+            "arq.create_pool",
+            new=AsyncMock(return_value=fake_arq_pool),
+        ),
     ):
         async with LifespanManager(app):
-            pass  # pragma: no cover
+            assert isinstance(app.state.queue_pool, ArqQueuePool)
+            assert app.state.config.queue_backend == "arq"
 
 
 @pytest.mark.asyncio
