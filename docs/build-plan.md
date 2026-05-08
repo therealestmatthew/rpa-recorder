@@ -18,15 +18,15 @@
 | M4 | Recorder + JS | ✅ done | [_archive/m4-recorder.md](_archive/m4-recorder.md) |
 | M5 | Storage layer | ✅ done | [_archive/m5-storage-layer.md](_archive/m5-storage-layer.md) |
 | M6 | Executor | ✅ done | [_archive/m6-executor.md](_archive/m6-executor.md) |
-| **M6.5** | **Page scripts + bronze layer** *(retrofit)* | 🆕 pending | [m6.5-page-scripts-and-bronze.md](m6.5-page-scripts-and-bronze.md) |
-| M7 | Heuristic classifier | 🟡 in progress | [m7-heuristic-classifier.md](m7-heuristic-classifier.md) |
-| M8 | CLI commands | ⬜ pending | [m8-cli-commands.md](m8-cli-commands.md) |
-| M9 | LLM classifier | ⬜ pending | [m9-llm-classifier.md](m9-llm-classifier.md) |
-| M10 | Recovery engine | ⬜ pending | [m10-recovery-engine.md](m10-recovery-engine.md) |
-| M11 | Confirmation workflow | ⬜ pending | [m11-confirmation-workflow.md](m11-confirmation-workflow.md) |
+| **M6.5** | **Page scripts + bronze layer** *(retrofit)* | ✅ done | [m6.5-page-scripts-and-bronze.md](m6.5-page-scripts-and-bronze.md) |
+| M7 | Heuristic classifier | ✅ done | [m7-heuristic-classifier.md](m7-heuristic-classifier.md) |
+| M8 | CLI commands | ✅ done | [m8-cli-commands.md](m8-cli-commands.md) |
+| M9 | LLM classifier | ✅ done | [m9-llm-classifier.md](m9-llm-classifier.md) |
+| M10 | Recovery engine | ✅ done | [m10-recovery-engine.md](m10-recovery-engine.md) |
+| M11 | Confirmation workflow | ✅ done | [m11-confirmation-workflow.md](m11-confirmation-workflow.md) |
 | **M11.5** | **Workers + medallion promotion** | 🆕 pending | [m11.5-workers-and-medallion-promotion.md](m11.5-workers-and-medallion-promotion.md) |
-| M12 | FastAPI control plane | ⬜ pending | [m12-fastapi-control-plane.md](m12-fastapi-control-plane.md) |
-| M13 | GitHub Actions CI | ⬜ pending | [m13-github-actions-ci.md](m13-github-actions-ci.md) |
+| M12 | FastAPI control plane | ✅ done *(Protocol-seam variant)* | [m12-fastapi-control-plane.md](m12-fastapi-control-plane.md) |
+| M13 | GitHub Actions CI | ✅ done | [m13-github-actions-ci.md](m13-github-actions-ci.md) |
 | M14 | Documentation polish | ⬜ pending | [m14-documentation-polish.md](m14-documentation-polish.md) |
 
 ## Why two new milestones

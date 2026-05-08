@@ -1,8 +1,24 @@
 # M12 — FastAPI control plane (modular routers + middleware)
 
-**Status:** pending
+**Status:** done (Protocol-seam variant — see *Protocol seam* below)
 
 **Source:** [.claude/plans/bootstrap.md](../.claude/plans/bootstrap.md) §API Specification; [.claude/plans/data-capture.md](../.claude/plans/data-capture.md) §7 (event taxonomy); [build-plan.md](build-plan.md) §Concurrency conventions; [m11.5-workers-and-medallion-promotion.md](m11.5-workers-and-medallion-promotion.md) for the worker contract this plane consumes.
+
+## Protocol seam (M12-as-shipped)
+
+M11.5 was still pending when M12 landed, so this milestone shipped against a `QueuePool` Protocol seam instead of a direct ARQ dependency. Routes call `pool.enqueue_job(...)` and the lifespan picks the backend by `Config.queue_backend`:
+
+- `in_process` (default): `InProcessQueuePool` runs jobs in the FastAPI event loop with a per-queue `asyncio.Semaphore` (`replay_queue=2`, `medallion_queue=10`). Each job publishes through the same `publish_progress(redis, run_id, event)` helper an ARQ worker would, so the WebSocket layer reads from Redis without caring which backend produced the events.
+- `arq`: raises `RuntimeError("queue_backend=arq requires M11.5...")` until M11.5 ships `ArqQueuePool` next door.
+
+The seam lives in `src/rpa_recorder/queues/` (`protocol.py`, `events.py`, `in_process.py`, `replay_handler.py`). M11.5 will add `queues/arq.py` (a thin `ArqQueuePool` adapter over `arq.connections.ArqRedis`) and re-import `replay_handler.run_replay` into `workers/jobs/replay.py`.
+
+`POST /medallion/recompute` and `/medallion/compact` accept the request and return `202` with `status="deferred"` while `queue_backend=in_process`. They enqueue the real `promote_silver_to_gold` / `compact_bronze_to_parquet` jobs once M11.5 sets `queue_backend=arq`. The contract is stable across backends.
+
+### Known constraints
+
+- **Local dev still requires Redis** even with `queue_backend=in_process`, because `WebSocketManager` and `publish_progress` use Redis pub/sub regardless. `docker run --rm -p 6379:6379 redis:7-alpine` before `rpa serve`.
+- `arq` is **not** added to `pyproject.toml`. M11.5 adds it. The `redis>=5` and `httpx>=0.27` deps land in M12; tests use `fakeredis[lua]`, `asgi-lifespan`, and `httpx-ws`.
 
 ## Goal
 
@@ -62,7 +78,7 @@ The architecture means: adding `POST /recordings/{id}/share` = a new file under 
 ### Modify
 
 - `src/rpa_recorder/cli/commands/serve.py` — already invokes `uvicorn.run("rpa_recorder.api:app", ...)`; verify the import path resolves to the new package
-- `src/rpa_recorder/browser/executor.py` — `Executor.__init__` adds `event_emitter: Callable[[dict[str, Any]], Awaitable[None]] | None = None`. The replay job from M11.5 wires this to `publish_progress(redis, run_id, event)`. M6 already had this on the M10 hook list; M12 makes it concrete.
+- `src/rpa_recorder/browser/executor.py` — `Executor.__init__` adds `event_emitter: Callable[[str, dict[str, Any]], Awaitable[None] | None] | None = None` (two-arg `(event_type, payload)` shape, matching `RecoveryEngine`'s existing emitter so they compose without an adapter). The in-process replay handler (and M11.5's worker) wires this to a closure that calls `publish_progress(redis, run_id, {"type": event_type, **payload})`. Events emitted by the executor: `run_started`, `action_started`, `action_succeeded`, `action_failed`, `run_finished`. Recovery's existing `recovery_started|succeeded|failed` events flow through unchanged when the same emitter is also wired into `RecoveryEngine`.
 - `src/rpa_recorder/config.py` — add `max_queue_depth: int = 100`, `rate_limit_per_minute: int = 60`, `ws_heartbeat_s: float = 30.0`, `ws_event_buffer_size: int = 1000`
 
 ## Public API
