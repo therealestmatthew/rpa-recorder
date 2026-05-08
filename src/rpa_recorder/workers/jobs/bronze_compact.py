@@ -22,7 +22,9 @@ async def compact_bronze_to_parquet(ctx: dict[str, Any]) -> dict[str, Any]:
     async with get_session(engine) as db:
         repo = BronzeArtifactRepository(db)
         written = await compact_all_recordings(
-            bronze_store, repo, parquet_root=config.bronze_root,
+            bronze_store,
+            repo,
+            parquet_root=config.bronze_root,
         )
 
     log.info("compact_complete", written=len(written))

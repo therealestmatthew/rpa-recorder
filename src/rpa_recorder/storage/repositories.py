@@ -585,9 +585,7 @@ class GoldHotRepository:
             existing.computed_at = computed_at
         await self._session.flush()
 
-    async def get_recording_metrics(
-        self, recording_id: str
-    ) -> GoldRecordingMetricsRow | None:
+    async def get_recording_metrics(self, recording_id: str) -> GoldRecordingMetricsRow | None:
         return await self._session.get(GoldRecordingMetricsRow, recording_id)
 
     async def list_dashboard_rows(self) -> list[GoldRunDashboardRow]:

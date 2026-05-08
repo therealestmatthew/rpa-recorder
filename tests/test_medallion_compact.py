@@ -23,9 +23,7 @@ def bronze_root(tmp_path: Path) -> Path:
 
 
 @pytest.mark.asyncio
-async def test_compact_writes_parquet_with_matching_row_count(
-    db_engine, bronze_root: Path
-) -> None:
+async def test_compact_writes_parquet_with_matching_row_count(db_engine, bronze_root: Path) -> None:
     """N envelopes in JSONL → Parquet with N rows."""
     rec_id = uuid4()
     store = LocalFilesystemStore(bronze_root)
@@ -38,7 +36,10 @@ async def test_compact_writes_parquet_with_matching_row_count(
     async with get_session(db_engine) as db:
         repo = BronzeArtifactRepository(db)
         result = await compact_recording_jsonl_to_parquet(
-            store, repo, rec_id, parquet_root=bronze_root,
+            store,
+            repo,
+            rec_id,
+            parquet_root=bronze_root,
         )
 
     assert result == paths.recording_events_parquet(rec_id)
@@ -62,7 +63,10 @@ async def test_compact_is_idempotent(db_engine, bronze_root: Path) -> None:
     async with get_session(db_engine) as db:
         repo = BronzeArtifactRepository(db)
         await compact_recording_jsonl_to_parquet(
-            store, repo, rec_id, parquet_root=bronze_root,
+            store,
+            repo,
+            rec_id,
+            parquet_root=bronze_root,
         )
     async with get_session(db_engine) as db:
         repo = BronzeArtifactRepository(db)
@@ -70,7 +74,10 @@ async def test_compact_is_idempotent(db_engine, bronze_root: Path) -> None:
     async with get_session(db_engine) as db:
         repo = BronzeArtifactRepository(db)
         second_result = await compact_recording_jsonl_to_parquet(
-            store, repo, rec_id, parquet_root=bronze_root,
+            store,
+            repo,
+            rec_id,
+            parquet_root=bronze_root,
         )
         second_artifacts = await repo.list_for_recording(rec_id)
 
@@ -92,7 +99,9 @@ async def test_compact_all_skips_missing_jsonl(db_engine, bronze_root: Path) -> 
     async with get_session(db_engine) as db:
         repo = BronzeArtifactRepository(db)
         written = await compact_all_recordings(
-            store, repo, parquet_root=bronze_root,
+            store,
+            repo,
+            parquet_root=bronze_root,
         )
 
     assert written == []

@@ -135,7 +135,9 @@ async def _compact_all() -> None:
         async with get_session(engine) as db:
             repo = BronzeArtifactRepository(db)
             written = await compact_all_recordings(
-                store, repo, parquet_root=config.bronze_root,
+                store,
+                repo,
+                parquet_root=config.bronze_root,
             )
         typer.echo(f"compact: wrote {len(written)} parquet files")
         for path in written:

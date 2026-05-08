@@ -38,16 +38,18 @@ _log = structlog.get_logger(__name__)
 
 _SCHEMA_VERSION = 1
 
-_ARROW_SCHEMA = pa.schema([
-    pa.field("recording_id", pa.string(), nullable=False),
-    pa.field("sequence", pa.int64(), nullable=False),
-    pa.field("event_type", pa.string(), nullable=True),
-    pa.field("timestamp_ms", pa.int64(), nullable=True),
-    pa.field("frame_url", pa.string(), nullable=True),
-    pa.field("url", pa.string(), nullable=True),
-    pa.field("envelope_json", pa.string(), nullable=False),
-    pa.field("schema_version", pa.int8(), nullable=False),
-])
+_ARROW_SCHEMA = pa.schema(
+    [
+        pa.field("recording_id", pa.string(), nullable=False),
+        pa.field("sequence", pa.int64(), nullable=False),
+        pa.field("event_type", pa.string(), nullable=True),
+        pa.field("timestamp_ms", pa.int64(), nullable=True),
+        pa.field("frame_url", pa.string(), nullable=True),
+        pa.field("url", pa.string(), nullable=True),
+        pa.field("envelope_json", pa.string(), nullable=False),
+        pa.field("schema_version", pa.int8(), nullable=False),
+    ]
+)
 
 _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -57,9 +59,15 @@ _UUID_RE = re.compile(
 def _envelope_to_columns(envelope: dict[str, Any]) -> dict[str, Any]:
     ts = envelope.get("timestamp_ms")
     return {
-        "event_type": envelope.get("event_type") if isinstance(envelope.get("event_type"), str) else None,
-        "timestamp_ms": int(ts) if isinstance(ts, int | float) and not isinstance(ts, bool) else None,
-        "frame_url": envelope.get("frame_url") if isinstance(envelope.get("frame_url"), str) else None,
+        "event_type": envelope.get("event_type")
+        if isinstance(envelope.get("event_type"), str)
+        else None,
+        "timestamp_ms": int(ts)
+        if isinstance(ts, int | float) and not isinstance(ts, bool)
+        else None,
+        "frame_url": envelope.get("frame_url")
+        if isinstance(envelope.get("frame_url"), str)
+        else None,
         "url": envelope.get("url") if isinstance(envelope.get("url"), str) else None,
         "envelope_json": json.dumps(envelope, default=str),
     }
@@ -213,7 +221,10 @@ async def compact_all_recordings(
             continue
         try:
             result = await compact_recording_jsonl_to_parquet(
-                bronze_store, bronze_repo, uid, parquet_root=parquet_root,
+                bronze_store,
+                bronze_repo,
+                uid,
+                parquet_root=parquet_root,
             )
         except Exception as exc:
             _log.error(

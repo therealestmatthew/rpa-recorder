@@ -113,11 +113,15 @@ async def test_dashboard_buckets_by_date(db_engine) -> None:
     async with get_session(db_engine) as db:
         await _seed_recording(db, rec_id=rec_id)
         await _seed_run(
-            db, rec_id=rec_id, status="success",
+            db,
+            rec_id=rec_id,
+            status="success",
             started=datetime(2026, 5, 1, 8, 0, tzinfo=UTC),
         )
         await _seed_run(
-            db, rec_id=rec_id, status="recovered",
+            db,
+            rec_id=rec_id,
+            status="recovered",
             started=datetime(2026, 5, 2, 8, 0, tzinfo=UTC),
         )
 

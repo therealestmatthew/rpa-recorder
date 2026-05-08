@@ -63,9 +63,7 @@ async def test_close_is_idempotent(fake_redis, arq_pool_mock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_returns_failed_when_arq_returns_none(
-    fake_redis, arq_pool_mock
-) -> None:
+async def test_enqueue_returns_failed_when_arq_returns_none(fake_redis, arq_pool_mock) -> None:
     """A None job from ARQ (e.g., dedup hit) surfaces as `failed` status."""
     arq_pool_mock.enqueue_job.return_value = None
     pool = ArqQueuePool(redis=fake_redis, arq_pool=arq_pool_mock)

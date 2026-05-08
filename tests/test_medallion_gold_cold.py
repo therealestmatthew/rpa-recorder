@@ -135,7 +135,8 @@ async def test_replay_scripts_parquet_per_recording(db_engine, cold_root: Path) 
         await db.flush()
 
     cold = ColdGold(cold_root)
-    from uuid import UUID  # noqa: PLC0415
+    from uuid import UUID
+
     async with get_session(db_engine) as db:
         await cold.recompute_replay_scripts(db, UUID(rec_id_str))
 

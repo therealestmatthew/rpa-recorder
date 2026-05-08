@@ -93,8 +93,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests freely use small sync I/O for assertions; ASYNC240 (no Path methods in
 # async fns) is too strict for tiny .exists() checks. PLC0415 is relaxed for
-# tests because narrow imports inside test bodies are common.
-"tests/**/*.py" = ["S", "ARG", "PLR", "ASYNC240", "PLC0415"]
+# tests because narrow imports inside test bodies are common. TC002/TC003 are
+# relaxed because pytest fixtures often annotate parameters without using the
+# imported type at runtime, and gating those imports under TYPE_CHECKING just
+# adds noise.
+"tests/**/*.py" = ["S", "ARG", "PLR", "ASYNC240", "PLC0415", "TC002", "TC003"]
 "src/rpa_recorder/cli/**/*.py" = ["B008"]  # typer uses B008 by design
 # FastAPI requires `Request`, `WebSocket`, `UUID` (path params), and
 # `Depends(...)` to be evaluated at runtime so the framework can introspect

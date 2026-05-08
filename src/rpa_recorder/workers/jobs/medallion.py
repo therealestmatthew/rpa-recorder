@@ -82,9 +82,7 @@ async def promote_silver_to_gold(
                     tg.create_task(cold.recompute_llm_costs_daily(db))
                     tg.create_task(cold.recompute_training_data(db))
                     if recording_id:
-                        tg.create_task(
-                            cold.recompute_replay_scripts(db, UUID(recording_id))
-                        )
+                        tg.create_task(cold.recompute_replay_scripts(db, UUID(recording_id)))
             except* Exception as eg:
                 for exc in eg.exceptions:
                     errors.append(f"{type(exc).__name__}: {exc}")

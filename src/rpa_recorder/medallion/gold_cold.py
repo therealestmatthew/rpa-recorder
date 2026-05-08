@@ -162,9 +162,7 @@ class ColdGold:
         target = self._table_path("training_data")
         await asyncio.to_thread(_atomic_write_parquet, table, target)
 
-    async def recompute_replay_scripts(
-        self, session: AsyncSession, recording_id: UUID
-    ) -> None:
+    async def recompute_replay_scripts(self, session: AsyncSession, recording_id: UUID) -> None:
         """Per-recording sequenced action script with confirmed labels."""
         rows = list(
             (

@@ -75,9 +75,7 @@ class ArqQueuePool:
     async def cancel(self, run_id: str) -> bool:
         """Set `cancel:{run_id}` so any handler checking the flag sees it."""
         try:
-            new = await self._redis.set(
-                f"cancel:{run_id}", "1", ex=3600, nx=True
-            )
+            new = await self._redis.set(f"cancel:{run_id}", "1", ex=3600, nx=True)
         except Exception as exc:
             _log.warning("cancel_redis_set_failed", run_id=run_id, error=str(exc))
             return False

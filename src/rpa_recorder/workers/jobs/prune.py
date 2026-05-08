@@ -21,9 +21,7 @@ def _windows_from_config(config: Any) -> dict[str, int]:
     }
 
 
-async def prune_old_artifacts(
-    ctx: dict[str, Any], *, dry_run: bool = False
-) -> dict[str, Any]:
+async def prune_old_artifacts(ctx: dict[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
     """Delete bronze artifacts older than their kind's retention window."""
     from rpa_recorder.config import Config  # noqa: PLC0415
     from rpa_recorder.medallion.retention import (  # noqa: PLC0415
@@ -42,9 +40,7 @@ async def prune_old_artifacts(
 
     async with get_session(engine) as db:
         repo = BronzeArtifactRepository(db)
-        report = await enforce_retention(
-            bronze_store, repo, retention, dry_run=dry_run
-        )
+        report = await enforce_retention(bronze_store, repo, retention, dry_run=dry_run)
 
     log.info(
         "prune_complete",

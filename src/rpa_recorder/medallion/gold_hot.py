@@ -49,9 +49,9 @@ async def _compute_recording_metrics(
     if total_runs == 0:
         confidence = (
             await session.execute(
-                select(func.coalesce(func.avg(RecordedActionRow.classification_confidence), 0.0)).where(
-                    RecordedActionRow.recording_id == recording_id
-                )
+                select(
+                    func.coalesce(func.avg(RecordedActionRow.classification_confidence), 0.0)
+                ).where(RecordedActionRow.recording_id == recording_id)
             )
         ).scalar_one()
         return {
@@ -128,24 +128,18 @@ async def recompute_gold_hot(
     computed_at = datetime.now(UTC)
 
     if recording_id is None:
-        recording_ids = list(
-            (await session.execute(select(RecordingRow.id))).scalars()
-        )
+        recording_ids = list((await session.execute(select(RecordingRow.id))).scalars())
     else:
         recording_ids = [str(recording_id)]
 
     upserts = 0
     for rec_id in recording_ids:
-        metrics = await _compute_recording_metrics(
-            session, rec_id, computed_at=computed_at
-        )
+        metrics = await _compute_recording_metrics(session, rec_id, computed_at=computed_at)
         await repo.upsert_recording_metrics(**metrics)  # type: ignore[arg-type]
         upserts += 1
 
     if recording_id is None:
-        runs = list(
-            (await session.execute(select(RunResultRow))).scalars()
-        )
+        runs = list((await session.execute(select(RunResultRow))).scalars())
     else:
         runs = list(
             (

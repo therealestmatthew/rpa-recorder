@@ -41,9 +41,7 @@ def test_medallion_compact_runs_against_empty_store(isolated_config: Config) -> 
 
 def test_medallion_prune_dry_run_reports(isolated_config: Config) -> None:
     """prune --dry-run on a fresh store reports zero deletions."""
-    result = CliRunner().invoke(
-        app, ["medallion", "prune", "--dry-run"], catch_exceptions=False
-    )
+    result = CliRunner().invoke(app, ["medallion", "prune", "--dry-run"], catch_exceptions=False)
     assert result.exit_code == 0
     assert "would delete 0" in result.stdout
 
@@ -80,9 +78,7 @@ def test_medallion_promote_gold_runs_on_empty_db(isolated_config: Config) -> Non
     assert "0 hot upserts" in result.stdout
 
 
-def test_medallion_promote_gold_per_recording(
-    isolated_config: Config, tmp_path: Path
-) -> None:
+def test_medallion_promote_gold_per_recording(isolated_config: Config, tmp_path: Path) -> None:
     """gold promotion with `--recording` recomputes that recording's replay script."""
     rec_id = str(uuid4())
     result = CliRunner().invoke(

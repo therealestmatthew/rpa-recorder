@@ -47,7 +47,9 @@ _PAYLOAD_BY_EVENT: dict[str, type] = {
 }
 
 
-def _build_payload(event_type: str, target: dict[str, Any], payload_dict: dict[str, Any]) -> tuple[ActionType, ActionPayload] | None:
+def _build_payload(
+    event_type: str, target: dict[str, Any], payload_dict: dict[str, Any]
+) -> tuple[ActionType, ActionPayload] | None:
     if event_type == "click":
         return ActionType.CLICK, ClickPayload(**payload_dict)
     if event_type == "input":
@@ -114,9 +116,7 @@ def _envelope_to_row(
     else:
         timestamp = datetime.now(UTC)
 
-    payload_serializable = (
-        payload.model_dump() if hasattr(payload, "model_dump") else dict(payload)
-    )
+    payload_serializable = payload.model_dump() if hasattr(payload, "model_dump") else dict(payload)
 
     return RecordedActionRow(
         recording_id=recording_id,

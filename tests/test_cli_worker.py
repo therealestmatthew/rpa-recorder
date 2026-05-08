@@ -20,14 +20,14 @@ def _patch_arq(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         captured["settings_cls"] = settings_cls
         return fake_worker
 
-    import arq.worker  # noqa: PLC0415
+    import arq.worker
 
     monkeypatch.setattr(arq.worker, "create_worker", fake_create_worker)
     return captured
 
 
 def test_worker_replay_picks_replay_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    from rpa_recorder.workers.settings import ReplayWorkerSettings  # noqa: PLC0415
+    from rpa_recorder.workers.settings import ReplayWorkerSettings
 
     captured = _patch_arq(monkeypatch)
     result = CliRunner().invoke(app, ["worker", "--queue", "replay"], catch_exceptions=False)
@@ -37,12 +37,10 @@ def test_worker_replay_picks_replay_settings(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_worker_medallion_picks_medallion_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    from rpa_recorder.workers.settings import MedallionWorkerSettings  # noqa: PLC0415
+    from rpa_recorder.workers.settings import MedallionWorkerSettings
 
     captured = _patch_arq(monkeypatch)
-    result = CliRunner().invoke(
-        app, ["worker", "--queue", "medallion"], catch_exceptions=False
-    )
+    result = CliRunner().invoke(app, ["worker", "--queue", "medallion"], catch_exceptions=False)
 
     assert result.exit_code == 0
     assert captured["settings_cls"] is MedallionWorkerSettings
@@ -50,7 +48,5 @@ def test_worker_medallion_picks_medallion_settings(monkeypatch: pytest.MonkeyPat
 
 def test_worker_unknown_queue_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_arq(monkeypatch)
-    result = CliRunner().invoke(
-        app, ["worker", "--queue", "nope"], catch_exceptions=True
-    )
+    result = CliRunner().invoke(app, ["worker", "--queue", "nope"], catch_exceptions=True)
     assert result.exit_code != 0

@@ -79,9 +79,7 @@ async def test_per_kind_windows_apply_independently(db_engine, bronze_root: Path
         )
         await db.flush()
 
-    config = RetentionConfig(
-        windows_by_kind={"attempt_screenshot": 30, "llm_call": 365}
-    )
+    config = RetentionConfig(windows_by_kind={"attempt_screenshot": 30, "llm_call": 365})
 
     async with get_session(db_engine) as db:
         repo = BronzeArtifactRepository(db)
