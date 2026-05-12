@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-environment
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-environment
       - run: uv run mypy src/ tests/
 
@@ -42,7 +42,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-environment
       - run: uv run pytest -m "not integration and not llm and not worker" --cov-report=xml --cov-report=term
       - uses: actions/upload-artifact@v4
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-environment
       - uses: ./.github/actions/setup-browser
       - run: uv run pytest -m "integration and not llm and not worker" --cov-report=xml
@@ -81,7 +81,7 @@ jobs:
     env:
       RPA_REDIS_URL: redis://localhost:6379/0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-environment
       - uses: ./.github/actions/setup-browser
       - name: Run worker tests (graceful on empty collection)
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           pattern: coverage-*
