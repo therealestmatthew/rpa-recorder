@@ -64,6 +64,15 @@ class RecordingRow(Base):
     starting_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     parameters: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    # Origin of the recording — `"playwright"` for the built-in recorder,
+    # `"selenium"` (or any caller-defined label) for ingestions through
+    # `rpa_recorder.integration`. Lets unified-medallion queries filter by source.
+    source: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="playwright",
+        server_default="playwright",
+    )
 
     actions: Mapped[list[RecordedActionRow]] = relationship(
         back_populates="recording",

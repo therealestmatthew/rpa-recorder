@@ -1,6 +1,6 @@
 [project]
 name = "rpa-recorder"
-version = "0.1.0"
+version = "0.2.0"
 description = "Browser-based RPA tool with semantic recording, classification, and resilient replay."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -42,6 +42,12 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["asyncpg>=0.30"]
+
+[project.urls]
+Homepage = "https://github.com/therealestmatthew/rpa-recorder"
+Repository = "https://github.com/therealestmatthew/rpa-recorder"
+Issues = "https://github.com/therealestmatthew/rpa-recorder/issues"
+Documentation = "https://github.com/therealestmatthew/rpa-recorder#readme"
 
 [project.scripts]
 rpa = "rpa_recorder.cli:app"

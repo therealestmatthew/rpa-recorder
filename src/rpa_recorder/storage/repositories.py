@@ -114,6 +114,7 @@ class RecordingRepository:
             starting_url=recording.starting_url,
             parameters={k: v.model_dump() for k, v in recording.parameters.items()},
             tags=list(recording.tags),
+            source=recording.source,
         )
         for action in recording.actions:
             row.actions.append(self._action_to_row(action))
@@ -247,6 +248,7 @@ class RecordingRepository:
             network_log=network,
             parameters=parameters,
             tags=list(row.tags or []),
+            source=row.source,
         )
 
     @staticmethod

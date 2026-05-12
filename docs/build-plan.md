@@ -27,7 +27,7 @@
 | **M11.5** | **Workers + medallion promotion** | ✅ done | [m11.5-workers-and-medallion-promotion.md](m11.5-workers-and-medallion-promotion.md) |
 | M12 | FastAPI control plane | ✅ done *(Protocol-seam variant)* | [m12-fastapi-control-plane.md](m12-fastapi-control-plane.md) |
 | M13 | GitHub Actions CI | ✅ done | [m13-github-actions-ci.md](m13-github-actions-ci.md) |
-| M14 | Documentation polish | ⬜ pending | [m14-documentation-polish.md](m14-documentation-polish.md) |
+| M14 | Documentation polish | ✅ done | [m14-documentation-polish.md](m14-documentation-polish.md) |
 
 ## Why two new milestones
 

@@ -45,3 +45,4 @@ class Recording(BaseModel):
     network_log: list[NetworkEvent] = Field(default_factory=list)
     parameters: dict[str, ParameterDef] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
+    source: str = "playwright"
