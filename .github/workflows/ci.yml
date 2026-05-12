@@ -112,7 +112,7 @@ jobs:
           pattern: coverage-*
           merge-multiple: false
           path: coverage-artifacts/
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v6
         with:
           directory: ./coverage-artifacts
           token: ${{ secrets.CODECOV_TOKEN }}
